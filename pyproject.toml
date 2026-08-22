@@ -1,0 +1,35 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "gto_solver"
+version = "0.1.0"
+description = "A from-scratch Counterfactual Regret Minimization (CFR) solver for small extensive-form poker games."
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "numpy",
+]
+
+[project.optional-dependencies]
+# pytest + linting, for local development and CI.
+dev = [
+    "pytest",
+    "ruff",
+]
+# Reserved for later phases (results plotting/reporting, neural-network function
+# approximation for CFR variants such as Deep CFR). Add extras here when those
+# phases start; no heavy dependencies are pulled in yet.
+# viz = []
+# nn = []
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
