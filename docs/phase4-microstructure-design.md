@@ -71,16 +71,22 @@ the model — and saying plainly why CFR is the wrong tool here — is the hones
 
 ### Why the obvious formulation fails
 
-With a **binary** value `V ∈ {0,1}`, a profit-maximizing market maker is degenerate: it
-quotes the maximum spread regardless of the informed-trader probability `mu`, carrying no
-adverse-selection signal at all. Reproduced as a control:
+With a **binary** value, `|V|` is a single number `c`. Once the half-spread reaches `c` the
+informed never trade, so profit collapses to the noise-trader term `(1−mu)·s·(T−s)/T`,
+which is maximized at `s = T/2` **for every `mu`**. The market maker parks there and the
+spread carries no adverse-selection signal at all. Reproduced as a control at `c ≤ T/2`:
 
 | mu | 0.05 | 0.20 | 0.50 | 0.80 |
 |---|---|---|---|---|
-| optimal half-spread | 1.0000 | 1.0000 | 1.0000 | 1.0000 |
+| optimal half-spread | 0.8125 | 0.8125 | 0.8125 | 0.8125 |
 
-The cause: with a binary value the informed trader always wins the same amount, so there
-is no margin along which the market maker can trade off.
+A first version of this claim was too strong and testing caught it: when `c > T/2` the
+binary spread *does* move with `mu`. But it still **saturates at `c`** and stops responding
+once the informed are fully excluded — at `c = 1.25` the half-spread pins to 1.25 for every
+`mu ≥ 0.4`. So binary fails either outright or by hitting a ceiling.
+
+A multi-level value has no such ceiling: `P(|V| > s)` decays gradually, so adverse selection
+trades off smoothly against lost noise flow at every spread.
 
 ### The fix
 
@@ -110,16 +116,19 @@ A configuration is only valid if the market actually functions:
 
 ### Chosen parameters (all conditions verified across `mu`)
 
-9-level value grid, `sigma = 1.0`, uninformed reservation `T = 1.6`:
+9-level value grid, `sigma = 1.0`, uninformed reservation `T = 1.6`, 33 quote levels.
+These are the shipped defaults in `GMParams`:
 
-| mu | strategic spread | competitive (GM) | MM PnL | P(uninf) | P(inf) |
-|---|---|---|---|---|---|
-| 0.02 | 1.6110 | 0.0306 | 0.3874 | 0.4966 | 0.3376 |
-| 0.10 | 1.6605 | 0.1561 | 0.3372 | 0.4811 | 0.3376 |
-| 0.20 | 1.7355 | 0.3204 | 0.2756 | 0.4577 | 0.3376 |
-| 0.30 | 1.8315 | 0.4937 | 0.2158 | 0.4277 | 0.3376 |
-| 0.50 | 2.1405 | 0.8699 | 0.1061 | 0.3311 | 0.3376 |
-| 0.70 | 2.5005 | 1.3143 | 0.0250 | 0.2186 | 0.1084 |
+| mu | strategic spread | competitive (GM) | MM PnL | P(uninf trades) |
+|---|---|---|---|---|
+| 0.02 | 1.6250 | 0.0306 | 0.3855 | 0.4922 |
+| 0.10 | 1.6250 | 0.1561 | 0.3359 | 0.4922 |
+| 0.20 | 1.7500 | 0.3204 | 0.2755 | 0.4531 |
+| 0.30 | 1.8750 | 0.4937 | 0.2150 | 0.4141 |
+| 0.50 | 2.1250 | 0.8699 | 0.1051 | 0.3359 |
+| 0.70 | 2.5000 | 1.3143 | 0.0250 | 0.2188 |
+
+The discrete-quote optimum tracks the continuous solution (1.61 → 2.50) closely.
 
 The strategic spread is monotonically increasing in `mu`, strictly wider than the
 competitive spread everywhere, and every point is a functioning market.
@@ -140,19 +149,30 @@ rather than a game. The trader only becomes strategic over **multiple rounds**, 
 trading today reveals information and moves tomorrow's quotes — so the informed trader
 must weigh immediate profit against information leakage. Multi-round is the design.
 
-- **Chance nodes**: draw `V` (9 outcomes); draw trader type informed/uninformed (`mu`);
-  draw uninformed direction and reservation level.
-- **Player 0 (market maker)**: posts a half-spread from a discrete tick grid each round.
-  Info set = observed **order-flow history only** — never `V`, never the trader type.
-- **Player 1 (trader)**: buy / sell / pass each round. The informed trader's info set
-  includes `V`; the uninformed trader's includes its direction and reservation.
-- **Payout**: market-maker PnL `(trade price − V) × direction`, negated for the trader —
-  exactly zero-sum, which the existing `exploitability` guard checks at every terminal node.
+Mid is 0 and the maker posts a symmetric half-spread `s`, so ask = `+s`, bid = `−s`.
 
-Estimated size at 2 rounds with a 9-value grid, 4 reservation levels, 9 quote levels and 3
-trader actions: roughly `9 × 2 × 4 × (9 × 3)^2 ≈ 5×10^4` terminal nodes — the same order as
-Leduc (5,520), so exact traversal is tractable. Three rounds pushes it to ~10^6, which is
-where **MCCFR earns its place** in this project rather than existing only for completeness.
+- **Root chance node**: draw `V` (9 levels) jointly with the trader type — informed with
+  probability `mu`, else uninformed with a direction. `9 × (1 + 2) = 27` outcomes.
+- **Player 0 (market maker)**: posts a half-spread from a 33-level grid each round. Info
+  set = observed **order-flow history only** — never `V`, never the trader type. In a
+  single round it therefore has exactly one info set.
+- **Player 1 (informed trader)**: buy / sell / pass. Its info set includes `V` and the quote.
+- **Uninformed trader**: mechanical, so it is *not* a player. It becomes a two-outcome
+  chance node placed **after** the quote, trading with probability `(T − s)/T`.
+- **Payout**: buy at the ask gives the maker `s − V`; sell at the bid gives `V + s`; no
+  trade gives 0. The trader's payout is the exact negation, so the game is exactly
+  zero-sum — which the existing `exploitability` guard checks at every terminal node.
+
+Putting the uninformed reservation *after* the quote rather than in the root chance node is
+what keeps this small: the reservation never enters the root, and its probability stays
+exact rather than discretized. An earlier design drew the reservation as a root chance node
+with discrete levels; that both inflated the tree and made the solved spread a coarse step
+function, because the optimum simply pinned to a reservation level.
+
+Single round is about `27 × 33 × 3 ≈ 2.7×10^3` terminal nodes — smaller than Leduc (5,520),
+so exact traversal is comfortable. Rounds multiply that by roughly `33 × 3` each, so three
+rounds reaches ~10^6, which is where **MCCFR earns its place** in this project rather than
+existing only for completeness.
 
 ---
 

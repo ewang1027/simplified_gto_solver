@@ -11,8 +11,59 @@ selection and bid-ask spreads.
 
 ## Status
 
-Phases 1–3 of 10 complete: the engine, four CFR variants, and two games (Kuhn and Leduc
-Hold'em), all validated by exploitability. See [Roadmap](#roadmap) for what's next.
+Phases 1–4 of 10 complete: the engine, four CFR variants, two poker games, and the
+market-microstructure centerpiece. See [Roadmap](#roadmap) for what's next.
+
+## Market microstructure
+
+A market maker quoting against possibly-informed order flow is playing the same
+asymmetric-information game CFR solves. Two canonical models are implemented, and they
+needed **different tools** — which is the most interesting result here.
+
+### Glosten–Milgrom: solved by CFR
+
+The solver recovers the profit-maximizing quote exactly. The benchmark is an exhaustive
+search over the quote grid that shares no code with the solver, so agreement is evidence
+rather than a tautology:
+
+| μ (informed share) | CFR spread | Brute-force optimum | Competitive GM spread |
+|---:|---:|---:|---:|
+| 0.02 | 1.6250 | 1.6250 | 0.0306 |
+| 0.10 | 1.6250 | 1.6250 | 0.1561 |
+| 0.30 | 1.8750 | 1.8750 | 0.4937 |
+| 0.50 | 2.1250 | 2.1250 | 0.8699 |
+| 0.70 | 2.5000 | 2.5000 | 1.3143 |
+
+Exact match at every μ, with exploitability ≈ 0.002. The spread widens as informed flow
+rises — adverse selection, recovered from self-play rather than assumed.
+
+Two market makers appear in that table on purpose. The **competitive** GM maker earns zero
+expected profit by construction, while CFR solves for a **profit-maximizing** one, which
+quotes strictly wider. They answer different questions and neither is presented as the
+other.
+
+### Kyle (1985): deliberately *not* solved by CFR
+
+Kyle's market maker is also competitive, and checking the numbers shows why that matters:
+a strategic maker's PnL is `λ·σu² − S0/(4λ)`, **strictly increasing in λ without bound**,
+with no interior optimum. Its PnL is exactly zero at the equilibrium `λ = √S0/(2σu)` — the
+zero-profit condition, not an optimum. Kyle is genuinely not a two-player zero-sum game, so
+it gets an iterated best-response **fixed-point solver** instead, validated against five
+closed-form results:
+
+| Quantity | Closed form | Recovered |
+|---|---|---|
+| Price impact | `λ = √S0 / (2σu)` | exact, from 6 parameter settings |
+| Trading intensity | `β = σu / √S0` | exact |
+| Product | `λβ = 1/2` | exact |
+| Information revealed | exactly **half** the private signal | 0.5000 |
+| Informed profit | `σu·√S0 / 2` | exact |
+
+λ is also recovered *independently* by regressing simulated price on order flow (0.038%
+error at 200k draws), which shares no algebra with the fixed-point solver.
+
+Choosing the right algorithm per model — and saying plainly why CFR is wrong for one of
+them — is the point of building both.
 
 ## Results so far
 
@@ -85,12 +136,16 @@ src/gto_solver/
 ├── games/
 │   ├── base.py            GameState / Game interfaces (incl. chance nodes)
 │   ├── kuhn.py            Kuhn poker — 12 info sets
-│   └── leduc.py           Leduc Hold'em — 288 info sets, two betting rounds
+│   ├── leduc.py           Leduc Hold'em — 288 info sets, two betting rounds
+│   └── glosten_milgrom.py Market making under adverse selection
 ├── solvers/
 │   ├── base.py            InfoSetStore, RegretUpdateRule, Traversal, CFRSolver
 │   ├── regret_rules.py    Vanilla / CFR+ / Discounted (and Linear) CFR
 │   └── traversal.py       FullTraversal (exact, optional alternating updates),
 │                          ExternalSamplingMCCFR
+├── analysis/
+│   ├── microstructure.py  Competitive + strategic GM benchmarks
+│   └── kyle.py            Kyle (1985) fixed-point solver
 └── metrics/
     ├── evaluation.py      Expected value of a fixed strategy profile
     └── exploitability.py  Best-response computation
@@ -175,26 +230,20 @@ vary between runs — but the game value is always −1/18 at equilibrium.
 | 1 | Game/solver abstractions, exact CFR, exploitability, packaging + CI | done |
 | 2 | CFR+, Discounted/Linear CFR, external-sampling MCCFR | done |
 | 3 | Leduc Hold'em — validates the abstraction generalizes | done |
-| 4 | **Market microstructure: Kyle (1985) and Glosten–Milgrom** — the centerpiece | next |
-| 5 | Multi-seed benchmarking with confidence bands, convergence plots | |
+| 4 | **Market microstructure: Kyle (1985) and Glosten–Milgrom** — the centerpiece | done |
+| 5 | Multi-seed benchmarking with confidence bands, convergence plots | next |
 | 6 | Performance engineering — profiling, optimized hot loop, published throughput | |
 | 7 | CLI | |
 | 8 | Interactive dashboard | |
 | 9 | Deep CFR — neural regret approximation, scored against tabular ground truth | |
 | 10 | Architecture writeup and docs | |
 
-Phase 4 is the point of the project: solve microstructure games with the same engine and
-check the results against closed-form theory — Kyle's price-impact coefficient λ, and the
-Glosten–Milgrom spread's dependence on the probability of informed flow.
-
-One subtlety drove that design, found by checking the numbers before building. Glosten–
-Milgrom assumes a **competitive** market maker earning zero expected profit, whereas CFR on
-a zero-sum game solves for a **profit-maximizing** one. They are not the same object: the
-competitive spread equals μ exactly (for `V ∈ {0,1}` with a 1/2 prior), while a strategic
-market maker quotes the maximum spread regardless of μ, and with price-elastic uninformed
-traders prefers to quote so wide that nobody trades at all. Kyle's model is included
-because its strategic content sits with the informed trader — who chooses order *size* to
-disguise information — which is well-posed for CFR in a way the naive GM formulation is not.
+Phase 4 was the point of the project, and its results are above. The design was worked out
+and checked numerically *before* any game code was written, which was worth it — two of the
+three obvious formulations turn out to be degenerate. `docs/phase4-microstructure-design.md`
+records what failed and why, including a parameter sweep that produced a beautiful-looking
+result (spread growing 20× with μ) which was entirely spurious: the market maker had stopped
+trading, a zero-profit corner sitting *inside* the search grid rather than on its edge.
 
 ## References
 
