@@ -11,8 +11,36 @@ selection and bid-ask spreads.
 
 ## Status
 
-Phase 1 of 10 complete. The engine, the game abstraction, and the correctness metric are in
-place and tested on Kuhn poker. See [Roadmap](#roadmap) for what's next.
+Phases 1–3 of 10 complete: the engine, four CFR variants, and two games (Kuhn and Leduc
+Hold'em), all validated by exploitability. See [Roadmap](#roadmap) for what's next.
+
+## Results so far
+
+**Algorithm comparison** (Kuhn poker, exploitability after N iterations):
+
+| Iterations | Vanilla CFR | CFR+ | DCFR | Linear CFR |
+|-----------:|------------:|-----:|-----:|-----------:|
+| 100 | 0.023301 | 0.015560 | 0.016391 | 0.017999 |
+| 1,000 | 0.006505 | 0.005135 | 0.004416 | 0.008694 |
+| 10,000 | 0.001486 | 0.000951 | 0.002033 | 0.003232 |
+| 100,000 | 0.000633 | 0.000614 | 0.000784 | 0.000593 |
+
+CFR+ beats vanilla at every horizon, as the literature reports. **DCFR does not** — it wins
+early but is worse than vanilla around 10k iterations. Its published defaults
+(α=1.5, β=0, γ=2) were tuned on far larger games; on a 12-info-set tree the aggressive early
+discounting trades away long-run precision. That result is left as measured rather than
+tuned away.
+
+**Exact vs. sampled** (Leduc Hold'em, equal 20s wall-clock budget):
+
+| Traversal | Iterations | Exploitability |
+|-----------|-----------:|---------------:|
+| Exact CFR | 610 | 0.02333 |
+| External-sampling MCCFR | 129,200 | 0.03599 |
+
+MCCFR runs ~250× more iterations per second but each is far noisier. Exact traversal still
+wins on Leduc — though by much less than on Kuhn, which is the expected trend: sampling pays
+off once the tree is too large to walk exhaustively.
 
 ## Why exploitability, not "does it match −1/18"
 
@@ -56,15 +84,26 @@ tree-walking engine and a single regret store instead of being four forked files
 src/gto_solver/
 ├── games/
 │   ├── base.py            GameState / Game interfaces (incl. chance nodes)
-│   └── kuhn.py            Kuhn poker
+│   ├── kuhn.py            Kuhn poker — 12 info sets
+│   └── leduc.py           Leduc Hold'em — 288 info sets, two betting rounds
 ├── solvers/
 │   ├── base.py            InfoSetStore, RegretUpdateRule, Traversal, CFRSolver
-│   ├── regret_rules.py    Vanilla regret matching
-│   └── traversal.py       FullTraversal (exact CFR)
+│   ├── regret_rules.py    Vanilla / CFR+ / Discounted (and Linear) CFR
+│   └── traversal.py       FullTraversal (exact, optional alternating updates),
+│                          ExternalSamplingMCCFR
 └── metrics/
     ├── evaluation.py      Expected value of a fixed strategy profile
     └── exploitability.py  Best-response computation
 ```
+
+Any regret rule composes with any traversal, so the four algorithms above are combinations
+rather than separate implementations.
+
+**The abstraction was tested, not assumed.** Leduc Hold'em was added *after* the solvers
+were written — different deck, two betting rounds, two chance points, ties (which Kuhn has
+none of), and a variable action count per node. It required **zero changes to any solver or
+metrics file**, and runs on all four algorithm variants unmodified. Its info-set count comes
+out to exactly 288, matching the published figure.
 
 Regret is tracked per information set with a **per-info-set action count**, not a global
 one — Leduc and the market-making game have different numbers of legal actions at different
@@ -134,9 +173,9 @@ vary between runs — but the game value is always −1/18 at equilibrium.
 | Phase | Work | Status |
 |-------|------|--------|
 | 1 | Game/solver abstractions, exact CFR, exploitability, packaging + CI | done |
-| 2 | CFR+, Discounted/Linear CFR, external-sampling MCCFR | next |
-| 3 | Leduc Hold'em — validates the abstraction generalizes | |
-| 4 | **Glosten–Milgrom market-making game** — the centerpiece | |
+| 2 | CFR+, Discounted/Linear CFR, external-sampling MCCFR | done |
+| 3 | Leduc Hold'em — validates the abstraction generalizes | done |
+| 4 | **Market microstructure: Kyle (1985) and Glosten–Milgrom** — the centerpiece | next |
 | 5 | Multi-seed benchmarking with confidence bands, convergence plots | |
 | 6 | Performance engineering — profiling, optimized hot loop, published throughput | |
 | 7 | CLI | |
@@ -144,9 +183,18 @@ vary between runs — but the game value is always −1/18 at equilibrium.
 | 9 | Deep CFR — neural regret approximation, scored against tabular ground truth | |
 | 10 | Architecture writeup and docs | |
 
-Phase 4 is the point of the project: solve the market-making game and check the result
-against the analytical Glosten–Milgrom quotes, confirming the solved spread widens as the
-probability of informed flow rises.
+Phase 4 is the point of the project: solve microstructure games with the same engine and
+check the results against closed-form theory — Kyle's price-impact coefficient λ, and the
+Glosten–Milgrom spread's dependence on the probability of informed flow.
+
+One subtlety drove that design, found by checking the numbers before building. Glosten–
+Milgrom assumes a **competitive** market maker earning zero expected profit, whereas CFR on
+a zero-sum game solves for a **profit-maximizing** one. They are not the same object: the
+competitive spread equals μ exactly (for `V ∈ {0,1}` with a 1/2 prior), while a strategic
+market maker quotes the maximum spread regardless of μ, and with price-elastic uninformed
+traders prefers to quote so wide that nobody trades at all. Kyle's model is included
+because its strategic content sits with the informed trader — who chooses order *size* to
+disguise information — which is well-posed for CFR in a way the naive GM formulation is not.
 
 ## References
 
