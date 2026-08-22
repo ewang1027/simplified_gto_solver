@@ -117,18 +117,27 @@ A configuration is only valid if the market actually functions:
 ### Chosen parameters (all conditions verified across `mu`)
 
 9-level value grid, `sigma = 1.0`, uninformed reservation `T = 1.6`, 33 quote levels.
-These are the shipped defaults in `GMParams`:
+These are the shipped defaults in `GMParams`.
 
-| mu | strategic spread | competitive (GM) | MM PnL | P(uninf trades) |
+> **Units.** `strategic_half_spread()` and `competitive_half_spread()` return the
+> **half-spread** `s` (the distance from mid to either quote). The table below reports the
+> full **spread** = `2s`, since that is the quantity market microstructure normally talks
+> about. Calling those functions directly returns half these numbers — that is expected,
+> not a discrepancy.
+
+| mu | strategic spread (2s) | competitive spread (2s) | MM PnL | P(uninf trades) |
 |---|---|---|---|---|
-| 0.02 | 1.6250 | 0.0306 | 0.3855 | 0.4922 |
-| 0.10 | 1.6250 | 0.1561 | 0.3359 | 0.4922 |
-| 0.20 | 1.7500 | 0.3204 | 0.2755 | 0.4531 |
-| 0.30 | 1.8750 | 0.4937 | 0.2150 | 0.4141 |
-| 0.50 | 2.1250 | 0.8699 | 0.1051 | 0.3359 |
+| 0.02 | 1.6250 | 0.0306 | 0.3873 | 0.4922 |
+| 0.10 | 1.6250 | 0.1561 | 0.3370 | 0.4922 |
+| 0.20 | 1.7500 | 0.3204 | 0.2756 | 0.4531 |
+| 0.30 | 1.8750 | 0.4937 | 0.2156 | 0.4141 |
+| 0.50 | 2.1250 | 0.8699 | 0.1061 | 0.3359 |
 | 0.70 | 2.5000 | 1.3143 | 0.0250 | 0.2188 |
 
 The discrete-quote optimum tracks the continuous solution (1.61 → 2.50) closely.
+
+Regenerate this table, and every other number in this document, with
+`python scripts/verify_phase4.py`.
 
 The strategic spread is monotonically increasing in `mu`, strictly wider than the
 competitive spread everywhere, and every point is a functioning market.
@@ -169,9 +178,18 @@ exact rather than discretized. An earlier design drew the reservation as a root 
 with discrete levels; that both inflated the tree and made the solved spread a coarse step
 function, because the optimum simply pinned to a reservation level.
 
-Single round is about `27 × 33 × 3 ≈ 2.7×10^3` terminal nodes — smaller than Leduc (5,520),
-so exact traversal is comfortable. Rounds multiply that by roughly `33 × 3` each, so three
-rounds reaches ~10^6, which is where **MCCFR earns its place** in this project rather than
+Terminal-node count is `9·99^R + 18·66^R` for `R` rounds — the informed branch has 3 flow
+outcomes per round, each uninformed branch only 2, since its direction is fixed at the root.
+Verified against a full tree walk at `R = 1` and `R = 2`:
+
+| Rounds | Terminal nodes |
+|---|---|
+| 1 | 2,079 |
+| 2 | 166,617 |
+| 3 | 13,907,619 |
+
+Single round is smaller than Leduc (5,520), so exact traversal is comfortable. Three rounds
+reaches ~1.4×10^7, which is where **MCCFR earns its place** in this project rather than
 existing only for completeness.
 
 ---

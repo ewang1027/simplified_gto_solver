@@ -64,7 +64,13 @@ class RegretUpdateRule(ABC):
     @abstractmethod
     def accumulate_regret(
         self, record: InfoSetRecord, action_regrets: np.ndarray, iteration: int
-    ) -> None: ...
+    ) -> None:
+        """Fold this iteration's regret into `record.cumulative_regret`.
+
+        `action_regrets` is already weighted by counterfactual reach. `iteration`
+        is 1-based and is what CFR+ and DCFR use to weight or discount; vanilla
+        CFR ignores it.
+        """
 
     @abstractmethod
     def accumulate_strategy(
@@ -73,7 +79,14 @@ class RegretUpdateRule(ABC):
         strategy: np.ndarray,
         reach_prob: float,
         iteration: int,
-    ) -> None: ...
+    ) -> None:
+        """Fold this iteration's strategy into `record.strategy_sum`.
+
+        `reach_prob` is the acting player's OWN reach probability, not the
+        counterfactual one -- the average strategy has to be weighted by how often
+        the player actually reaches the info set. `iteration` is 1-based, and is
+        what CFR+ uses for linear averaging.
+        """
 
 
 def regret_matching(regrets: np.ndarray) -> np.ndarray:

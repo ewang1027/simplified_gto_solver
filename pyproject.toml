@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "gto_solver"
 version = "0.1.0"
-description = "A from-scratch Counterfactual Regret Minimization (CFR) solver for small extensive-form poker games."
+description = "A from-scratch CFR solver for imperfect-information games, validated on poker and applied to market microstructure."
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [

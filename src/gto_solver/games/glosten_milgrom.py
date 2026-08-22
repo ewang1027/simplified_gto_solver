@@ -145,6 +145,23 @@ class GlostenMilgromState(GameState):
 
 
 class GlostenMilgromGame(Game):
+    """Market making under adverse selection, as a two-player zero-sum game.
+
+    Player 0 is the market maker, which posts a half-spread each round and sees
+    only the order flow it has observed -- never the asset value or the trader
+    type. Player 1 is the informed trader. Uninformed traders are mechanical, so
+    they are chance nodes rather than a player.
+
+    `mu` is the probability the trader is informed, the adverse-selection knob:
+    the solved spread widens as it rises.
+
+    `num_rounds=1` is the case the analytical benchmark in
+    analysis/microstructure.py validates, and the trader's best response there is
+    a dominant strategy. With more rounds the trader becomes genuinely strategic,
+    since trading reveals information that moves later quotes. Tree size is
+    9*99^R + 18*66^R terminal nodes, so rounds get expensive quickly.
+    """
+
     def __init__(self, mu: float, params: GMParams | None = None, num_rounds: int = 1):
         self.mu = mu
         self.params = params if params is not None else GMParams()

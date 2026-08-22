@@ -89,7 +89,7 @@ tuned away.
 | Exact CFR | 610 | 0.02333 |
 | External-sampling MCCFR | 129,200 | 0.03599 |
 
-MCCFR runs ~250× more iterations per second but each is far noisier. Exact traversal still
+MCCFR runs ~210× more iterations per second but each is far noisier. Exact traversal still
 wins on Leduc — though by much less than on Kuhn, which is the expected trend: sampling pays
 off once the tree is too large to walk exhaustively.
 
@@ -172,8 +172,17 @@ source .venv/bin/activate
 pip install -e '.[dev]'
 
 python main.py    # train on Kuhn poker, report exploitability + strategies
-pytest            # correctness suite
+pytest            # correctness suite (230 tests, ~33s)
+ruff check .
 ```
+
+## Documentation
+
+| Document | What it covers |
+|---|---|
+| [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | Why the code is shaped this way, and how to add a game, an algorithm, or a benchmark |
+| [`docs/BUILDLOG.md`](docs/BUILDLOG.md) | Phase-by-phase progress log, findings, and the traps worth knowing before touching a phase |
+| [`docs/phase4-microstructure-design.md`](docs/phase4-microstructure-design.md) | The microstructure modeling work, including the formulations that failed and why |
 
 ## Kuhn poker rules
 
@@ -207,7 +216,8 @@ makes the regret "counterfactual", and it's why the average strategy — not the
 ## Solved Kuhn equilibrium
 
 Info-set format is `Card|history`, where `b` = bet and `c` = check. No suffix means the
-player is acting first.
+player is acting first. Eight of the twelve info sets are shown; `python main.py` prints
+all of them.
 
 | Info Set | Strategy | Intuition |
 |----------|----------|-----------|
