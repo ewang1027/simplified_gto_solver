@@ -227,3 +227,76 @@ def test_format_table_names_every_comparison(results):
     table = compare(results, results).format_table()
     for line in ("vanilla", "mccfr", "convergence", "wallclock", "speedup"):
         assert line in table
+
+
+def test_an_untimeable_baseline_reports_no_speedup_instead_of_dividing_by_zero(results):
+    original = results.convergence[0]
+    untimed = dataclasses.replace(original, train_seconds_by_seed=((0.0, 0.0),))
+    baseline = dataclasses.replace(results, convergence=(untimed, results.convergence[1]))
+
+    comparison = next(
+        c for c in compare(baseline, results).comparisons if c.algorithm == "vanilla"
+    )
+    assert comparison.speedup == 0.0
+    assert any("no measurable throughput" in note for note in comparison.notes)
+
+
+def test_the_benchmarks_own_output_paths_do_not_count_as_a_dirty_tree(tmp_path, monkeypatch):
+    """The flaw this exists for: a benchmark run writes each suite's results and
+    charts into the tree as it goes, so with those counted, the first suite recorded
+    a clean tree and every suite after it recorded a dirty one -- dirtied by the run
+    itself. Nothing under those paths can affect what a later suite measures.
+    """
+    import subprocess
+
+    from gto_solver.benchmark import results as results_module
+
+    def fake_run(args, **kwargs):
+        if "rev-parse" in args:
+            return subprocess.CompletedProcess(args, 0, "abc1234\n", "")
+        return subprocess.CompletedProcess(
+            args, 0, "?? results/kuhn_convergence.json\n?? docs/images/kuhn_convergence.png\n", ""
+        )
+
+    monkeypatch.setattr(results_module.subprocess, "run", fake_run)
+    git = results_module._git_description(tmp_path)
+    assert git["dirty"] is False
+    assert git["dirty_paths"] == []
+
+
+def test_a_changed_source_file_still_counts_as_a_dirty_tree(tmp_path, monkeypatch):
+    import subprocess
+
+    from gto_solver.benchmark import results as results_module
+
+    def fake_run(args, **kwargs):
+        if "rev-parse" in args:
+            return subprocess.CompletedProcess(args, 0, "abc1234\n", "")
+        return subprocess.CompletedProcess(
+            args, 0, " M src/gto_solver/solvers/traversal.py\n?? results/out.json\n", ""
+        )
+
+    monkeypatch.setattr(results_module.subprocess, "run", fake_run)
+    git = results_module._git_description(tmp_path)
+    assert git["dirty"] is True
+    assert git["dirty_paths"] == ["src/gto_solver/solvers/traversal.py"]
+
+
+def test_a_clean_index_does_not_shift_every_parsed_path(tmp_path, monkeypatch):
+    """Regression: the porcelain output was stripped before parsing, which ate the
+    leading status column of the first line whenever the index was clean and shifted
+    every recorded path one character left.
+    """
+    import subprocess
+
+    from gto_solver.benchmark import results as results_module
+
+    def fake_run(args, **kwargs):
+        if "rev-parse" in args:
+            return subprocess.CompletedProcess(args, 0, "abc1234\n", "")
+        return subprocess.CompletedProcess(args, 0, " M README.md\n M docs/BUILDLOG.md\n", "")
+
+    monkeypatch.setattr(results_module.subprocess, "run", fake_run)
+    git = results_module._git_description(tmp_path)
+    assert git["commit"] == "abc1234"
+    assert git["dirty_paths"] == ["README.md", "docs/BUILDLOG.md"]

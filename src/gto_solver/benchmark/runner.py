@@ -96,9 +96,13 @@ class ConvergenceRun:
         return tuple(float(np.median(self.values_at(i))) for i in range(len(self.checkpoints)))
 
     def iterations_per_second(self) -> float:
-        """Training throughput at the longest checkpoint, median across seeds."""
-        totals = [curve[-1] for curve in self.train_seconds_by_seed]
-        return float(self.checkpoints[-1] / np.median(totals))
+        """Training throughput at the longest checkpoint, median across seeds.
+
+        Zero when the run was too short to time. A throughput of infinity is not a
+        useful thing to put in a results file or divide by later.
+        """
+        elapsed = float(np.median([curve[-1] for curve in self.train_seconds_by_seed]))
+        return self.checkpoints[-1] / elapsed if elapsed > 0.0 else 0.0
 
     def to_dict(self) -> dict:
         return {
@@ -177,7 +181,7 @@ class WallclockRun:
 
     def iterations_per_second(self) -> float:
         rates = [
-            iters[-1] / seconds[-1]
+            iters[-1] / seconds[-1] if seconds[-1] > 0.0 else 0.0
             for iters, seconds in zip(self.iterations_by_seed, self.train_seconds_by_seed)
         ]
         return float(np.median(rates))
@@ -346,7 +350,10 @@ def run_wallclock(
         for target in time_checkpoints:
             while elapsed < target:
                 remaining = target - elapsed
-                if iterations == 0:
+                if iterations == 0 or elapsed <= 0.0:
+                    # elapsed can still be zero after training on a platform whose
+                    # clock is coarser than one iteration; estimating a rate from it
+                    # would divide by zero rather than merely be imprecise.
                     chunk = 1
                 else:
                     rate = iterations / elapsed

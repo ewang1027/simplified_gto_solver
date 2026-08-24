@@ -6,6 +6,7 @@ exploitability evaluation stays off the solver's clock, a deterministic variant 
 run once, and every reduction the harness makes announces itself in `notes`.
 """
 
+import dataclasses
 from itertools import pairwise
 
 import pytest
@@ -209,3 +210,22 @@ def test_convergence_run_round_trips_through_a_dict():
 def test_wallclock_run_round_trips_through_a_dict():
     run = run_wallclock(KuhnGame, MCCFR, (0.05,), seeds=(0, 1))
     assert WallclockRun.from_dict(run.to_dict()) == run
+
+
+# --- degenerate input ------------------------------------------------------
+
+
+def test_throughput_of_an_untimeable_run_is_zero_not_infinity():
+    """A run too short to time should not report infinite throughput: the number
+    goes into a results file and gets divided by when the next phase compares
+    against it.
+    """
+    run = run_convergence(KuhnGame, VANILLA, (10,), seeds=(0,))
+    untimed = dataclasses.replace(run, train_seconds_by_seed=((0.0,),))
+    assert untimed.iterations_per_second() == 0.0
+
+
+def test_wallclock_throughput_of_an_untimeable_run_is_zero():
+    run = run_wallclock(KuhnGame, MCCFR, (0.05,), seeds=(0,))
+    untimed = dataclasses.replace(run, train_seconds_by_seed=((0.0,), (0.0,)))
+    assert untimed.iterations_per_second() == 0.0

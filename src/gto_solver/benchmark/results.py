@@ -40,6 +40,13 @@ DEFAULT_CURVE_TOLERANCE = 1e-9
 # working tree into a results file.
 _MAX_DIRTY_PATHS = 10
 
+# Paths the benchmark itself writes. They are excluded from the dirty-tree check for
+# a reason found the hard way: a run writes each suite's results and charts into the
+# tree as it finishes, so with these counted, the first suite reported a clean tree
+# and every suite after it reported a dirty one -- dirtied by the run in progress.
+# Nothing under these paths can affect what a later suite measures.
+_OUTPUT_PREFIXES = ("results/", "docs/images/")
+
 
 def _git_description(repo: Path) -> dict:
     """Commit and dirty-flag for `repo`, or a reason it could not be determined.
@@ -49,15 +56,23 @@ def _git_description(repo: Path) -> dict:
     """
 
     def run(*args: str) -> str | None:
+        """Raw stdout, deliberately unstripped.
+
+        `git status --porcelain` puts two status columns and a space before every
+        path, so the first line begins with a space whenever the index is clean --
+        and stripping the output ate exactly that space, shifting every parsed path
+        one character left. Callers strip what they need.
+        """
         try:
             done = subprocess.run(
                 args, cwd=repo, capture_output=True, text=True, timeout=10, check=False
             )
         except (OSError, subprocess.SubprocessError):
             return None
-        return done.stdout.strip() if done.returncode == 0 else None
+        return done.stdout if done.returncode == 0 else None
 
-    commit = run("git", "rev-parse", "--short", "HEAD")
+    head = run("git", "rev-parse", "--short", "HEAD")
+    commit = head.strip() if head is not None else None
     if commit is None:
         return {
             "commit": None,
@@ -66,15 +81,24 @@ def _git_description(repo: Path) -> dict:
             "detail": "not a git checkout, or git unavailable",
         }
     status = run("git", "status", "--porcelain")
+    if status is None:
+        return {
+            "commit": commit,
+            "dirty": None,
+            "dirty_paths": [],
+            "detail": "git status failed, so cleanliness is unknown",
+        }
     # Which paths were dirty, not just that something was: "dirty" alone leaves the
     # next reader unable to tell an edited docstring from an edited hot loop, and
     # that is the first question anyone asks of a suspect measurement.
-    paths = [line[3:] for line in status.splitlines()][:_MAX_DIRTY_PATHS] if status else []
+    # Porcelain lines are two status columns, a space, then the path.
+    paths = [line[3:] for line in status.splitlines() if len(line) > 3]
+    changed = [path for path in paths if not path.startswith(_OUTPUT_PREFIXES)]
     return {
         "commit": commit,
-        "dirty": bool(status) if status is not None else None,
-        "dirty_paths": paths,
-        "detail": None if not status else "tree had uncommitted changes when this was measured",
+        "dirty": bool(changed),
+        "dirty_paths": changed[:_MAX_DIRTY_PATHS],
+        "detail": None if not changed else "tree had uncommitted changes when this was measured",
     }
 
 
@@ -304,6 +328,11 @@ def compare(
                 delta, curves_match = None, None
             baseline_rate = before.iterations_per_second()
             candidate_rate = after.iterations_per_second()
+            if baseline_rate <= 0.0:
+                run_notes.append(
+                    f"{before.algorithm} on {before.game}: the baseline reports no "
+                    f"measurable throughput, so no speedup could be computed."
+                )
             comparisons.append(
                 RunComparison(
                     kind=kind,
@@ -311,7 +340,7 @@ def compare(
                     game=before.game,
                     baseline_rate=baseline_rate,
                     candidate_rate=candidate_rate,
-                    speedup=candidate_rate / baseline_rate,
+                    speedup=candidate_rate / baseline_rate if baseline_rate > 0.0 else 0.0,
                     max_exploitability_delta=delta,
                     curves_match=curves_match,
                     notes=tuple(run_notes),

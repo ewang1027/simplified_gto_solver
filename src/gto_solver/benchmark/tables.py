@@ -15,6 +15,9 @@ from collections.abc import Sequence
 from gto_solver.benchmark.runner import ConvergenceRun, WallclockRun
 from gto_solver.benchmark.stats import DEFAULT_ENVELOPE
 
+# Below this many decade markers, showing every checkpoint beats showing a stub.
+_MINIMUM_TABLE_ROWS = 3
+
 
 def _row(cells: Sequence[str]) -> str:
     return "| " + " | ".join(cells) + " |"
@@ -38,6 +41,12 @@ def _select_checkpoints(
     A table that quietly shows five of thirteen checkpoints looks like the whole
     measurement, so the omission is stated and the reader is pointed at the file
     that has all of it.
+
+    Decade markers are the default because a thirteen-row table nobody reads is
+    worse than a five-row one everybody does. But a log grid need not contain many
+    powers of ten -- the microstructure suite's eight checkpoints contain exactly
+    one -- and a one-row table is not a table, so a selection that sparse is
+    discarded in favour of showing everything.
     """
     if wanted is not None:
         missing = [c for c in wanted if c not in checkpoints]
@@ -46,7 +55,7 @@ def _select_checkpoints(
         rows = tuple(wanted)
     else:
         decades = tuple(c for c in checkpoints if _is_decade(c))
-        rows = decades or tuple(checkpoints)
+        rows = decades if len(decades) >= _MINIMUM_TABLE_ROWS else tuple(checkpoints)
     notes = []
     if len(rows) < len(checkpoints):
         notes.append(

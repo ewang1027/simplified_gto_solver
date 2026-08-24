@@ -100,12 +100,20 @@ SUITES: dict[str, Suite] = {
             subtitle=(
                 "Exploitability vs training seconds. Iterations are not a common currency "
                 "between the two: one sampled iteration is a single path, one exact "
-                "iteration is the whole 288-info-set tree."
+                "iteration is the whole 288-info-set tree. Both CFR+ update schedules are "
+                "here because CFR+ wins on Kuhn and loses here, and the schedule is the "
+                "first explanation to rule out."
             ),
             kind="wallclock",
             make_game=LeducGame,
             game_label="leduc_poker",
-            algorithms=("vanilla", "cfr_plus", "mccfr", "mccfr_plus"),
+            algorithms=(
+                "vanilla",
+                "cfr_plus",
+                "cfr_plus_alternating",
+                "mccfr",
+                "mccfr_plus",
+            ),
             checkpoints=(0.5, 1.0, 2.0, 5.0, 10.0, 20.0),
             seeds=tuple(range(10)),
             spread_algorithm=None,
@@ -115,12 +123,14 @@ SUITES: dict[str, Suite] = {
             title="CFR on the Glosten-Milgrom market-making game (mu = 0.30)",
             subtitle=(
                 "The microstructure game measured the same way as the poker ones. 298 info "
-                "sets, 33 quotes at the maker's node."
+                "sets, 33 quotes at the maker's node. The update rules are comparable to "
+                "each other on this axis; the sampled traversal is on it for reference "
+                "only, since equal iterations is not a fair comparison against exact."
             ),
             kind="convergence",
             make_game=_gm_game,
             game_label="glosten_milgrom(mu=0.30)",
-            algorithms=("vanilla", "cfr_plus", "mccfr"),
+            algorithms=("vanilla", "cfr_plus", "cfr_plus_alternating", "mccfr"),
             checkpoints=log_checkpoints(10, 3_000, per_decade=3),
             seeds=tuple(range(20)),
             spread_algorithm="mccfr",
