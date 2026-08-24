@@ -119,6 +119,22 @@ SUITES: dict[str, Suite] = {
             spread_algorithm=None,
         ),
         Suite(
+            name="leduc_convergence",
+            title="Update rules on Leduc Hold'em, by iteration",
+            subtitle=(
+                "The wall-clock suite fits only ~600 exact iterations into 20 seconds, and a "
+                "rule that merely starts slowly would look like a rule that loses. This is the "
+                "same comparison on the axis the literature uses, run out to 5,000 iterations."
+            ),
+            kind="convergence",
+            make_game=LeducGame,
+            game_label="leduc_poker",
+            algorithms=("vanilla", "cfr_plus", "cfr_plus_alternating", "mccfr"),
+            checkpoints=log_checkpoints(10, 5_000, per_decade=3),
+            seeds=tuple(range(20)),
+            spread_algorithm="mccfr",
+        ),
+        Suite(
             name="gm_convergence",
             title="CFR on the Glosten-Milgrom market-making game (mu = 0.30)",
             subtitle=(
@@ -138,8 +154,9 @@ SUITES: dict[str, Suite] = {
     )
 }
 
-# Run by default. The microstructure suite is opt-in: it is the slowest per iteration
-# and its result duplicates what the Phase 4 gate test already pins.
+# Run by default. The other two are opt-in on cost grounds, and the cost is the whole
+# reason to say which is which: leduc_convergence walks the 288-info-set tree 5,000
+# times per exact variant, and gm_convergence is the slowest game per iteration.
 DEFAULT_SUITES: tuple[str, ...] = ("kuhn_convergence", "leduc_wallclock")
 
 
