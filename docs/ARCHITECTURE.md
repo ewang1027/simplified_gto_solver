@@ -228,14 +228,22 @@ src/gto_solver/
 ├── solvers/        base.py, regret_rules.py, traversal.py, registry.py
 ├── analysis/       microstructure.py (GM benchmarks), kyle.py (fixed-point solver)
 ├── metrics/        exploitability.py, evaluation.py
-└── benchmark/      stats.py, runner.py, results.py, suites.py, tables.py, plots.py
+├── benchmark/      stats.py, runner.py, results.py, suites.py, tables.py,
+│                   reporting.py, plots.py
+└── cli.py          the `gto` command line
 tests/              one file per module, plus test_microstructure_gate.py
 docs/               BUILDLOG.md, ARCHITECTURE.md, phase4-microstructure-design.md
 results/            benchmark results as JSON, with provenance
 scripts/            verify_phase4.py (regenerates the design doc's numbers),
-                    benchmark.py (runs the suites, writes results and charts)
-main.py             Kuhn demo entry point (a real CLI is Phase 7)
+                    profile_hotloop.py (where the training time goes)
 ```
+
+`cli.py` selects from the registries — `games/registry.py`, `solvers/registry.py`,
+`benchmark/suites.py` — rather than keeping its own lists, so adding a variant or a game
+makes it appear in the CLI with no change there, and `gto algorithms` cannot drift out of
+date. Running a suite lives in `benchmark/reporting.py` rather than in the CLI, because it
+was duplicated in a script before and the half that drifts first is the notes — the half
+whose whole job is to stop a reduced run from reading like a complete one.
 
 `benchmark/plots.py` is the one module that needs an optional dependency (matplotlib, via
 the `viz` extra). It is deliberately not imported from `benchmark/__init__.py`, so importing

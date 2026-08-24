@@ -10,7 +10,14 @@ readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
     "numpy",
+    # The CLI is a user-facing feature of this project rather than an optional
+    # convenience, so typer is a real dependency and `gto` is installed with the
+    # package. >=0.12 for the Annotated-parameter style used throughout cli.py.
+    "typer>=0.12",
 ]
+
+[project.scripts]
+gto = "gto_solver.cli:app"
 
 [project.optional-dependencies]
 # pytest + linting, for local development and CI. matplotlib is included so CI

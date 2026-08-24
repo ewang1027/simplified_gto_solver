@@ -11,13 +11,18 @@ cd ~/simplified_gto_solver
 python -m venv .venv && source .venv/bin/activate
 pip install -e '.[dev]'
 
-pytest          # 437 tests, ~25s
+pytest          # 455 tests, ~35s
 ruff check .
-python main.py  # Kuhn demo: exploitability + solved strategies
+gto solve       # Kuhn demo: exploitability + solved strategies
+gto --help      # solve / algorithms / games / benchmark / microstructure
 
-python scripts/benchmark.py --quick   # the benchmark harness, in seconds
-python scripts/benchmark.py           # the published suites, about 13 minutes
+gto benchmark --quick   # the benchmark harness, in seconds
+gto benchmark           # the published suites, about 10 minutes
 ```
+
+Phases 1-6 ran `python main.py` and `python scripts/benchmark.py`; both were replaced by
+`gto` in Phase 7, so earlier sections mentioning them are recording what was run at the
+time rather than what to run now.
 
 CI runs `ruff check .` then `pytest` on Python 3.11 and 3.12 for every push.
 
@@ -34,7 +39,7 @@ compare against.
 
 ## Status
 
-Phases 1–6 of 10 complete. Phase 7 (CLI) is next.
+Phases 1–7 of 10 complete. Phase 8 (interactive dashboard) is next.
 
 | Phase | Work | Status |
 |---|---|---|
@@ -44,8 +49,8 @@ Phases 1–6 of 10 complete. Phase 7 (CLI) is next.
 | 4 | Market microstructure: Glosten–Milgrom + Kyle | done |
 | 5 | Multi-seed benchmarking, confidence bands, convergence plots | done |
 | 6 | Performance engineering — profiling, optimized hot loop, published throughput | done |
-| 7 | CLI (typer) | next |
-| 8 | Interactive dashboard (Streamlit) | |
+| 7 | CLI (typer) | done |
+| 8 | Interactive dashboard (Streamlit) | next |
 | 9 | Deep CFR — neural regret approximation vs tabular ground truth | |
 | 10 | Architecture writeup and docs polish | |
 
@@ -361,23 +366,81 @@ deliberately.
 
 ---
 
-## Next up: Phase 7
+## Phase 7 — the CLI (2026-08-24)
 
-A real CLI (typer), replacing `main.py`'s fixed Kuhn demo.
+`gto`, installed with the package, replacing `main.py`'s fixed Kuhn demo and
+`scripts/benchmark.py`. Five commands: `solve`, `algorithms`, `games`, `benchmark`,
+`microstructure`.
+
+```
+gto solve --game leduc --algorithm cfr_plus --iterations 5000
+gto solve --game gm --mu 0.7 --json
+gto benchmark --compare results/before.json results/after.json
+gto microstructure
+```
+
+**Everything selects from the registries.** `games/registry.py` (new here, and now the
+only copy of the name-to-game map that `scripts/profile_hotloop.py` had grown its own of),
+`solvers/registry.py`, `benchmark/suites.py`. Adding a variant or a game makes it appear in
+the CLI with no change to `cli.py`, and `gto algorithms` cannot drift out of date because
+it reads the same table the solver does — which a test checks, so it stays true if someone
+later hard-codes a list.
+
+**Running a suite moved into `benchmark/reporting.py`.** It was inside the script, and the
+CLI needed the same thing; two copies of "run, save, draw, print the tables, then the
+notes" would drift, and the half that drifts first is the notes — whose entire job is to
+stop a reduced or capped run from reading like a complete one.
+
+### Decisions worth recording
+
+- **A parameter that does not apply is an error, not a no-op.** `gto solve --game kuhn
+  --mu 0.7` exits 2. A caller passing it believes something about the run that is not true,
+  and a spread reported for a mu the run never used is worse than a refusal.
+- **The seed is reported only for sampled variants** — `null` in JSON for the exact ones.
+  A seed printed beside a deterministic run reads as if it mattered.
+- **What gets reported is the average strategy**, through `metrics/evaluation.py`. The
+  per-iteration return value is the current regret-matching strategy, which oscillates. The
+  test for this checks the Kuhn value lands near -1/18: the average settles there and the
+  current strategy does not, so the number is evidence about *which object* was evaluated.
+- **Both old entry points were deleted rather than kept as shims**, with every reference
+  updated in the same commit. A README documenting a removed entry point is the failure
+  this project keeps hitting; two working entry points for one job is the other one.
+- `typer` is a real dependency rather than an extra, because the CLI is a feature of this
+  project and not an optional convenience.
+
+`gto microstructure` reproduces the Phase 4 table exactly — CFR spread equal to the
+brute-force optimum at all five mu, exploitability ~0.002, competitive spread far tighter —
+in about 17 seconds end to end.
+
+Measured while writing that sentence, because the first draft of it extrapolated instead:
+the command's solving and evaluating is **13.6s with the tree cache against 31.1s without,
+2.3x** — not the 3.1x that Phase 6 measured for GM *training* throughput. The difference is
+that **`exploitability()` walks the game tree uncached**, and at 400 iterations it is a
+large share of this command's work. End-to-end speedups are therefore smaller than
+training-throughput speedups whenever a command evaluates as often as it trains, which is
+worth knowing before Phase 8 puts an exploitability number behind a slider.
+
+---
+
+## Next up: Phase 8
+
+An interactive dashboard (Streamlit) over the same registries and results the CLI uses.
 
 Specifics that matter:
-- `solvers/registry.py` already names every variant and `benchmark/suites.py` every suite,
-  so the CLI should select from those rather than growing its own list of algorithms.
-- Keep `main.py` working, or delete it in the same commit that replaces it. A README that
-  documents a removed entry point is the failure mode this project keeps hitting.
-- Anything that reports a solved strategy should evaluate the **average** strategy through
-  `metrics/evaluation.py`, never a solver's per-iteration return value.
+- Read `results/*.json` rather than re-running suites in the browser: a 20-second Leduc
+  budget is not an interactive latency, and the published numbers already exist.
+- Live solving is fine for Kuhn and Glosten-Milgrom, which are seconds; gate Leduc behind
+  an explicit control rather than solving it on a slider drag.
+- Any band drawn is the **seed envelope**, labelled as such, never the bootstrap CI. The
+  two answer different questions and the plots already keep them apart.
+- Add `streamlit` as an extra (`[dashboard]`), not a core dependency, and keep the package
+  importable without it — the same rule `plots.py` follows for matplotlib.
 
 Still open, carried forward:
-- **CFR+ loses to vanilla on both non-Kuhn games** and nobody knows why. The update schedule
-  is ruled out and so is a slow start (see Phase 5). It wants a correctness review of
+- **CFR+ loses to vanilla on both non-Kuhn games** and nobody knows why. The update
+  schedule is ruled out and so is a slow start (Phase 5). It wants a correctness review of
   `CFRPlusRegretMatching` against Tammelin 2014, not another benchmark.
-- The next performance step trades bit-identical curves for speed; see Phase 6 above.
+- The next performance step trades bit-identical curves for speed; see Phase 6.
 
 ## Conventions
 

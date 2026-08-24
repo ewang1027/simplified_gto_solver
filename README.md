@@ -11,9 +11,9 @@ selection and bid-ask spreads.
 
 ## Status
 
-Phases 1–6 of 10 complete: the engine, seven CFR variants, two poker games, the
-market-microstructure centerpiece, a multi-seed benchmarking harness, and a 2–3×
-optimization of the hot loop that leaves every convergence curve bit-identical. See
+Phases 1–7 of 10 complete: the engine, seven CFR variants, two poker games, the
+market-microstructure centerpiece, a multi-seed benchmarking harness, a 2–3× optimization
+of the hot loop that leaves every convergence curve bit-identical, and the `gto` CLI. See
 [Roadmap](#roadmap) for what's next.
 
 ## Market microstructure
@@ -69,7 +69,7 @@ them — is the point of building both.
 
 ## Benchmarks
 
-Every number below comes from `python scripts/benchmark.py` and is written to
+Every number below comes from `gto benchmark` and is written to
 `results/*.json` with the machine, commit and seeds behind it. The tables are pasted from
 what the script prints, so they are regenerated rather than transcribed.
 
@@ -277,7 +277,8 @@ src/gto_solver/
 │   ├── base.py            GameState / Game interfaces (incl. chance nodes)
 │   ├── kuhn.py            Kuhn poker — 12 info sets
 │   ├── leduc.py           Leduc Hold'em — 288 info sets, two betting rounds
-│   └── glosten_milgrom.py Market making under adverse selection
+│   ├── glosten_milgrom.py Market making under adverse selection
+│   └── registry.py        The named games, and which parameters each takes
 ├── solvers/
 │   ├── base.py            InfoSetStore, RegretUpdateRule, Traversal, CFRSolver
 │   ├── regret_rules.py    Vanilla / CFR+ / Discounted (and Linear) CFR
@@ -290,13 +291,15 @@ src/gto_solver/
 ├── metrics/
 │   ├── evaluation.py      Expected value of a fixed strategy profile
 │   └── exploitability.py  Best-response computation
-└── benchmark/
-    ├── stats.py           Seed envelopes and bootstrap confidence intervals
-    ├── runner.py          Multi-seed convergence and wall-clock measurement
-    ├── results.py         Serialization with provenance, plus before/after compare()
-    ├── suites.py          The published benchmark suites
-    ├── tables.py          The markdown tables below, regenerated from results
-    └── plots.py           Charts (needs the optional viz extra)
+├── benchmark/
+│   ├── stats.py           Seed envelopes and bootstrap confidence intervals
+│   ├── runner.py          Multi-seed convergence and wall-clock measurement
+│   ├── results.py         Serialization with provenance, plus before/after compare()
+│   ├── suites.py          The published benchmark suites
+│   ├── tables.py          The markdown tables below, regenerated from results
+│   ├── reporting.py       Running suites and printing what happened
+│   └── plots.py           Charts (needs the optional viz extra)
+└── cli.py                 The `gto` command line
 ```
 
 Any regret rule composes with any traversal, so the seven named variants in
@@ -325,20 +328,29 @@ python -m venv .venv
 source .venv/bin/activate
 pip install -e '.[dev]'
 
-python main.py    # train on Kuhn poker, report exploitability + strategies
-pytest            # correctness suite (419 tests, ~40s)
+gto --help        # the CLI, installed with the package
+gto solve         # train on Kuhn poker, report exploitability + strategies
+pytest            # correctness suite (455 tests, ~35s)
 ruff check .
+```
+
+```bash
+gto solve --game leduc --algorithm cfr_plus --iterations 5000
+gto solve --game gm --mu 0.7 --json        # machine-readable, full strategy
+gto algorithms                             # the seven variants and what they are
+gto games                                  # the three games and their parameters
+gto microstructure                         # solved spread vs both benchmarks
 ```
 
 Benchmarks. Charts need the optional `viz` extra (`pip install -e '.[viz]'`); results are
 written whether or not it is installed.
 
 ```bash
-python scripts/benchmark.py                     # the two default suites, about 13 minutes
-python scripts/benchmark.py --suite gm_convergence --suite leduc_convergence
-python scripts/benchmark.py --quick             # a smoke run in seconds; NOT the published numbers
-python scripts/benchmark.py --list              # what suites exist and what they cost
-python scripts/benchmark.py --compare results/before.json results/after.json
+gto benchmark                                   # the two default suites, about 10 minutes
+gto benchmark --suite gm_convergence --suite leduc_convergence
+gto benchmark --quick                           # a smoke run in seconds; NOT the published numbers
+gto benchmark --list                            # what suites exist and what they cost
+gto benchmark --compare results/before.json results/after.json
 ```
 
 Four suites are published. Two run by default; `leduc_convergence` (5,000 exact iterations
@@ -389,8 +401,8 @@ makes the regret "counterfactual", and it's why the average strategy — not the
 ## Solved Kuhn equilibrium
 
 Info-set format is `Card|history`, where `b` = bet and `c` = check. No suffix means the
-player is acting first. Eight of the twelve info sets are shown; `python main.py` prints
-all of them.
+player is acting first. Eight of the twelve info sets are shown; `gto solve` prints all
+of them.
 
 | Info Set | Strategy | Intuition |
 |----------|----------|-----------|
@@ -416,8 +428,8 @@ vary between runs — but the game value is always −1/18 at equilibrium.
 | 4 | **Market microstructure: Kyle (1985) and Glosten–Milgrom** — the centerpiece | done |
 | 5 | Multi-seed benchmarking with confidence bands, convergence plots | done |
 | 6 | Performance engineering — profiling, optimized hot loop, published throughput | done |
-| 7 | CLI | next |
-| 8 | Interactive dashboard | |
+| 7 | CLI (`gto solve` / `benchmark` / `microstructure`) | done |
+| 8 | Interactive dashboard | next |
 | 9 | Deep CFR — neural regret approximation, scored against tabular ground truth | |
 | 10 | Architecture writeup and docs | |
 
