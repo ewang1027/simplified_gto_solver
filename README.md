@@ -66,33 +66,129 @@ error at 200k draws), which shares no algebra with the fixed-point solver.
 Choosing the right algorithm per model — and saying plainly why CFR is wrong for one of
 them — is the point of building both.
 
-## Results so far
+## Benchmarks
 
-**Algorithm comparison** (Kuhn poker, exploitability after N iterations):
+Every number below comes from `python scripts/benchmark.py` and is written to
+`results/*.json` with the machine, commit and seeds behind it. The tables are pasted from
+what the script prints, so they are regenerated rather than transcribed.
 
-| Iterations | Vanilla CFR | CFR+ | DCFR | Linear CFR |
-|-----------:|------------:|-----:|-----:|-----------:|
-| 100 | 0.023301 | 0.015560 | 0.016391 | 0.017999 |
-| 1,000 | 0.006505 | 0.005135 | 0.004416 | 0.008694 |
-| 10,000 | 0.001486 | 0.000951 | 0.002033 | 0.003232 |
-| 100,000 | 0.000633 | 0.000614 | 0.000784 | 0.000593 |
+Two rules make them comparable across phases, and both are enforced in code:
 
-CFR+ beats vanilla at every horizon, as the literature reports. **DCFR does not** — it wins
-early but is worse than vanilla around 10k iterations. Its published defaults
-(α=1.5, β=0, γ=2) were tuned on far larger games; on a 12-info-set tree the aggressive early
-discounting trades away long-run precision. That result is left as measured rather than
-tuned away.
+- **Stochastic variants are reported over fixed seeds with bands, never as a single run** —
+  20 seeds on the convergence suites, 10 on the twenty-second Leduc budgets.
+- **Deterministic variants are run once.** `FullTraversal` never reads the rng, so twenty
+  seeds would be twenty identical curves and a band of width zero. That claim is checked by
+  running the seeds and comparing strategies, not assumed.
 
-**Exact vs. sampled** (Leduc Hold'em, equal 20s wall-clock budget):
+A shaded band is always the 10–90% **seed envelope** — how much individual runs differ —
+never a confidence interval, which is a narrower thing answering a different question.
+Evaluating exploitability is never charged to a solver's clock.
 
-| Traversal | Iterations | Exploitability |
-|-----------|-----------:|---------------:|
-| Exact CFR | 610 | 0.02333 |
-| External-sampling MCCFR | 129,200 | 0.03599 |
+### Algorithm comparison — Kuhn poker
 
-MCCFR runs ~210× more iterations per second but each is far noisier. Exact traversal still
-wins on Leduc — though by much less than on Kuhn, which is the expected trend: sampling pays
-off once the tree is too large to walk exhaustively.
+![CFR variants on Kuhn poker](docs/images/kuhn_convergence.png)
+
+| Iterations | Vanilla CFR | CFR+ | DCFR | Linear CFR | CFR+ (alternating) |
+|---:|---:|---:|---:|---:|---:|
+| 10 | 0.091144 | 0.076111 | 0.171237 | 0.096067 | 0.088585 |
+| 100 | 0.023301 | 0.015560 | 0.016391 | 0.017999 | 0.021210 |
+| 1,000 | 0.006505 | 0.005135 | 0.004416 | 0.008694 | 0.006771 |
+| 10,000 | 0.001486 | 0.000951 | 0.002033 | 0.003232 | 0.002157 |
+| 100,000 | 0.000633 | 0.000614 | 0.000784 | 0.000593 | 0.000683 |
+
+| Iterations | MCCFR (ext. sampling) median | 10-90% over 20 seeds | MCCFR + CFR+ rule median | 10-90% over 20 seeds |
+|---:|---:|---:|---:|---:|
+| 10 | 0.319444 | 0.207292 - 0.478249 | 0.310525 | 0.205283 - 0.470130 |
+| 100 | 0.093886 | 0.077691 - 0.119522 | 0.069377 | 0.055925 - 0.099972 |
+| 1,000 | 0.026667 | 0.012435 - 0.034647 | 0.025784 | 0.017082 - 0.037637 |
+| 10,000 | 0.008287 | 0.005703 - 0.012609 | 0.009609 | 0.004305 - 0.012881 |
+| 100,000 | 0.002711 | 0.001577 - 0.003734 | 0.003155 | 0.002552 - 0.004176 |
+
+- **CFR+ beats vanilla at all 13 measured checkpoints** on Kuhn.
+- **DCFR loses at 9 of the 13**, including the last (0.000784 against 0.000633). An earlier
+  single-grid reading recorded this as "wins early, worse around 10k"; the finer grid shows
+  it is not that tidy — DCFR wins at 46, 100, 1,000 and 21,544 iterations and loses
+  everywhere else.
+- **MCCFR needs 21.5× more iterations** for the same accuracy, and two horizons agree on the
+  factor: vanilla's exploitability at 100 iterations is first matched by MCCFR's median at
+  2,154, and its 1,000-iteration value at 21,544. Vanilla at 10,000 is never matched inside
+  100,000 MCCFR iterations. An earlier single-run estimate of 10–15× was too optimistic.
+- **The CFR+ rule composed with external sampling** — a combination neither paper defines,
+  available here because rules and traversals are independent — helps between 46 and 1,000
+  iterations and trails afterwards. At 100,000 the two medians' 95% bootstrap CIs overlap
+  ([0.00203, 0.00317] against [0.00274, 0.00386]), so twenty seeds do not resolve which is
+  better. It does carry visibly less seed variance: 2.1× spread against 5.2×.
+
+### One run is not a result
+
+![Seed variance of MCCFR on Kuhn poker](docs/images/kuhn_convergence_seeds.png)
+
+At 100,000 iterations MCCFR's twenty seeds span **0.000807 to 0.004165** around a median of
+0.002711 — the luckiest seed is 5.2× better than the unluckiest. Every sampled number this
+project published before this phase was a single run, and could have landed anywhere in that
+range. That is what the bands are for.
+
+### Exact traversal vs sampling — Leduc Hold'em
+
+![Exact vs sampled on Leduc](docs/images/leduc_wallclock.png)
+
+| Budget | Vanilla CFR | CFR+ | CFR+ (alternating) | MCCFR (ext. sampling) | MCCFR + CFR+ rule |
+|---:|---:|---:|---:|---:|---:|
+| 0.5s | 0.20422 | 0.20730 | 0.74290 | 0.34276 | 0.35823 |
+| 1s | 0.13583 | 0.13548 | 0.33170 | 0.21722 | 0.23604 |
+| 2s | 0.07568 | 0.09746 | 0.16099 | 0.14496 | 0.16749 |
+| 5s | 0.04671 | 0.07135 | 0.10888 | 0.07949 | 0.10898 |
+| 10s | 0.03424 | 0.05080 | 0.09102 | 0.05750 | 0.07412 |
+| 20s | 0.02125 | 0.03819 | 0.07532 | 0.03666 | 0.05430 |
+
+| Variant | Iterations in the final budget | Iterations/sec | Seeds |
+|---|---:|---:|---:|
+| Vanilla CFR | 616 | 31 | deterministic |
+| CFR+ | 586 | 29 | deterministic |
+| CFR+ (alternating) | 715 | 36 | deterministic |
+| MCCFR (ext. sampling) | 129,938 | 6,497 | 10 |
+| MCCFR + CFR+ rule | 130,689 | 6,534 | 10 |
+
+- **Exact traversal beats sampling at every budget**, and not only on the median: every one
+  of the ten MCCFR seeds at 20 s is worse than the single exact run (best sampled 0.02810
+  against exact 0.02125).
+- Sampling completes **211× more iterations per second** and still loses. Iterations are not
+  a currency the two traversals share, which is why this suite is measured in seconds.
+
+### CFR+ wins on Kuhn and loses on everything else
+
+That is the phase's most interesting result, so it was checked on both axes and both update
+schedules before being written down.
+
+![Update rules on Leduc by iteration](docs/images/leduc_convergence.png)
+
+| Iterations | Vanilla CFR | CFR+ | CFR+ (alternating) |
+|---:|---:|---:|---:|
+| 10 | 0.341117 | 0.245522 | 1.310192 |
+| 47 | 0.108595 | 0.106788 | 0.243655 |
+| 103 | 0.061949 | 0.079673 | 0.128167 |
+| 486 | 0.020843 | 0.041439 | 0.083194 |
+| 5,000 | 0.006825 | 0.014839 | 0.036571 |
+
+CFR+ leads for the first three checkpoints on Leduc, crosses over between 47 and 103
+iterations, and ends **2.2× worse** than vanilla at 5,000. On the Glosten–Milgrom game the
+same shape appears earlier — CFR+ leads at 10 and 23 iterations and ends **8.3× worse** at
+3,000. Alternating updates, the schedule the published algorithm uses, are worse still on
+both games, at every checkpoint.
+
+So this is not a slow start, and it is not the update schedule. It is a real property of
+this implementation on these games at these iteration counts, and it is recorded as measured
+rather than tuned away. It is also unexplained, and published CFR+ results run far longer
+than 5,000 iterations, so it is on the list for a correctness review rather than being
+offered as a general claim about CFR+.
+
+### The market-making game
+
+![CFR on the Glosten-Milgrom game](docs/images/gm_convergence.png)
+
+The microstructure game runs through the same harness as the poker ones. Exact CFR drives
+exploitability to **0.000113** at 3,000 iterations over its 298 info sets, at 183
+iterations/sec.
 
 ## Why exploitability, not "does it match −1/18"
 
@@ -160,14 +256,20 @@ src/gto_solver/
     └── plots.py           Charts (needs the optional viz extra)
 ```
 
-Any regret rule composes with any traversal, so the four algorithms above are combinations
-rather than separate implementations.
+Any regret rule composes with any traversal, so the seven named variants in
+`solvers/registry.py` are combinations rather than separate implementations — including
+`mccfr_plus`, the CFR+ rule under external sampling, which neither paper defines and which
+cost nothing to add.
 
 **The abstraction was tested, not assumed.** Leduc Hold'em was added *after* the solvers
 were written — different deck, two betting rounds, two chance points, ties (which Kuhn has
 none of), and a variable action count per node. It required **zero changes to any solver or
-metrics file**, and runs on all four algorithm variants unmodified. Its info-set count comes
+metrics file**, and runs on all seven algorithm variants unmodified. Its info-set count comes
 out to exactly 288, matching the published figure.
+
+The same held when the benchmark harness was added in Phase 5: measuring a game needs nothing
+from the game beyond the interface it already implements, so the microstructure game is
+benchmarked by the same code as the poker ones.
 
 Regret is tracked per information set with a **per-info-set action count**, not a global
 one — Leduc and the market-making game have different numbers of legal actions at different
@@ -181,7 +283,7 @@ source .venv/bin/activate
 pip install -e '.[dev]'
 
 python main.py    # train on Kuhn poker, report exploitability + strategies
-pytest            # correctness suite (375 tests, ~39s)
+pytest            # correctness suite (419 tests, ~40s)
 ruff check .
 ```
 
@@ -189,11 +291,15 @@ Benchmarks. Charts need the optional `viz` extra (`pip install -e '.[viz]'`); re
 written whether or not it is installed.
 
 ```bash
-python scripts/benchmark.py           # the published suites -- about 12 minutes
-python scripts/benchmark.py --quick   # a smoke run in seconds; NOT the published numbers
-python scripts/benchmark.py --list    # what suites exist
+python scripts/benchmark.py                     # the two default suites, about 13 minutes
+python scripts/benchmark.py --suite gm_convergence --suite leduc_convergence
+python scripts/benchmark.py --quick             # a smoke run in seconds; NOT the published numbers
+python scripts/benchmark.py --list              # what suites exist and what they cost
 python scripts/benchmark.py --compare results/before.json results/after.json
 ```
+
+Four suites are published. Two run by default; `leduc_convergence` (5,000 exact iterations
+over 288 info sets, three times) and `gm_convergence` are opt-in on cost.
 
 Results land in `results/*.json` with provenance (interpreter, numpy, machine, commit, and
 whether the tree was dirty), and the markdown tables below are pasted from what the script

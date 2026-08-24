@@ -121,7 +121,15 @@ whole tree.
 
 Results carry provenance — interpreter, numpy, machine, commit, and whether the tree was
 dirty — because a timing number without the machine it ran on is not a measurement, and a
-"reproduce this" pointing at a commit is worthless if the tree had uncommitted edits.
+"reproduce this" pointing at a commit is worthless if the tree had uncommitted edits. The
+dirty check deliberately ignores `results/` and `docs/images/`: the benchmark writes its own
+outputs there as it runs, and counting them meant every suite after the first reported a tree
+dirtied by the run in progress.
+
+**Know the noise floor before claiming a speedup.** Ten seeds each training for exactly 20
+seconds on this machine completed between 118,797 and 135,051 iterations — a 3.2% relative
+standard deviation. A throughput difference smaller than that is machine drift, not an
+optimization.
 
 ## Microstructure: modeling assumptions
 
