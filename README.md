@@ -11,10 +11,11 @@ selection and bid-ask spreads.
 
 ## Status
 
-Phases 1–8 of 10 complete: the engine, seven CFR variants, two poker games, the
+Phases 1–9 of 10 complete: the engine, eight CFR variants, two poker games, the
 market-microstructure centerpiece, a multi-seed benchmarking harness, a 2–3× optimization
-of the hot loop that leaves every convergence curve bit-identical, the `gto` CLI, and an
-interactive dashboard. See [Roadmap](#roadmap) for what's next.
+of the hot loop that leaves every convergence curve bit-identical, the `gto` CLI, an
+interactive dashboard, and Deep CFR with the network written from scratch in numpy. See
+[Roadmap](#roadmap) for what's next.
 
 ## Market microstructure
 
@@ -233,6 +234,45 @@ would take away its reason to exist. Most of those figures sit at or below the 3
 wall-clock noise floor measured in Phase 5; the largest, Leduc's 1.09×, is the `payouts()`
 change, which does touch the sampled path.
 
+### Deep CFR, and reading the axis carefully
+
+![Deep CFR against tabular CFR on Kuhn](docs/images/kuhn_deep_cfr.png)
+
+Deep CFR (Brown et al. 2019) replaces the regret table with a network refitted every
+iteration. The network is written from scratch in numpy — about eighty lines with Adam,
+gradient-checked against finite differences — so the project gains no dependency for it.
+
+| Iterations | Vanilla CFR | MCCFR median | Deep CFR median | Deep CFR 10–90% over 10 seeds |
+|---:|---:|---:|---:|---:|
+| 10 | 0.091144 | 0.313553 | 0.110430 | 0.095355 – 0.145768 |
+| 22 | 0.056658 | 0.232038 | 0.069134 | 0.057279 – 0.081303 |
+| 46 | 0.034898 | 0.149167 | 0.072594 | 0.046791 – 0.082195 |
+| 96 | 0.023800 | 0.099279 | 0.050183 | 0.044949 – 0.060846 |
+| 200 | 0.011947 | 0.067597 | 0.035639 | 0.030422 – 0.037836 |
+
+At equal iterations Deep CFR beats MCCFR by 2–3× and loses to exact tabular CFR by up to
+3×. **The first half of that is an artifact of the axis, and this project has now hit the
+same trap three times in three different disguises.** One Deep CFR iteration runs 30
+sampled traversals per player where MCCFR runs one, so equal iterations is not equal work.
+Normalized by traversals, using MCCFR's own published curve:
+
+| Deep CFR | Exploitability | MCCFR at the same traversal count | Winner |
+|---:|---:|---:|---|
+| 10 iterations | 0.1104 | 0.0493 (at 300) | MCCFR, 2.2× |
+| 46 iterations | 0.0726 | 0.0203 (at 1,380) | MCCFR, 3.6× |
+| 200 iterations | 0.0356 | 0.0103 (at 6,000) | MCCFR, 3.5× |
+
+So **Deep CFR loses to both tabular CFR and MCCFR on Kuhn**, and that is the design
+working rather than failing. Deep CFR exists for games whose information sets cannot be
+enumerated; on twelve of them, approximating a table is strictly worse than being one. The
+honest measurement is the point of implementing it here — this repository can score a
+neural approximation against an exactly solved game, which is exactly what a real
+application of Deep CFR cannot do.
+
+One thing it does win: its seed envelope is **narrower** than MCCFR's (1.36× against 1.87×
+between the luckiest and unluckiest of ten seeds), because the network averages over many
+samples per info set rather than counting visits to each one separately.
+
 ## Why exploitability, not "does it match −1/18"
 
 Kuhn poker's equilibrium value is a published constant (−1/18 ≈ −0.0556), so it's tempting
@@ -279,8 +319,11 @@ src/gto_solver/
 │   ├── leduc.py           Leduc Hold'em — 288 info sets, two betting rounds
 │   ├── glosten_milgrom.py Market making under adverse selection
 │   └── registry.py        The named games, and which parameters each takes
+├── nn/
+│   └── mlp.py             A small MLP in numpy, with Adam and gradient checks
 ├── solvers/
 │   ├── base.py            InfoSetStore, RegretUpdateRule, Traversal, CFRSolver
+│   ├── deep_cfr.py        Deep CFR — the one variant that is not rule × traversal
 │   ├── regret_rules.py    Vanilla / CFR+ / Discounted (and Linear) CFR
 │   ├── traversal.py       FullTraversal (exact, optional alternating updates),
 │   │                      ExternalSamplingMCCFR
@@ -331,7 +374,7 @@ pip install -e '.[dev]'
 
 gto --help        # the CLI, installed with the package
 gto solve         # train on Kuhn poker, report exploitability + strategies
-pytest            # correctness suite (466 tests, ~45s)
+pytest            # correctness suite (503 tests, ~50s)
 ruff check .
 ```
 
@@ -437,8 +480,8 @@ vary between runs — but the game value is always −1/18 at equilibrium.
 | 6 | Performance engineering — profiling, optimized hot loop, published throughput | done |
 | 7 | CLI (`gto solve` / `benchmark` / `microstructure`) | done |
 | 8 | Interactive dashboard (`gto dashboard`) | done |
-| 9 | Deep CFR — neural regret approximation, scored against tabular ground truth | next |
-| 10 | Architecture writeup and docs | |
+| 9 | Deep CFR — neural regret approximation, scored against tabular ground truth | done |
+| 10 | Architecture writeup and docs | next |
 
 Phase 4 was the point of the project, and its results are above. The design was worked out
 and checked numerically *before* any game code was written, which was worth it — two of the

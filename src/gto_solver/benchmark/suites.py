@@ -122,9 +122,10 @@ SUITES: dict[str, Suite] = {
             name="kuhn_deep_cfr",
             title="Deep CFR against tabular CFR on Kuhn poker",
             subtitle=(
-                "Scored by exploitability against a game that is solved exactly, which is "
-                "the whole point: a neural approximation can be graded against a known "
-                "answer here rather than by a training loss that means nothing on its own."
+                "Scored by exploitability against a game solved exactly. Read the axis "
+                "carefully: one Deep CFR iteration runs 30 sampled traversals per player "
+                "to MCCFR's one, so equal iterations is NOT equal work -- normalized by "
+                "traversals, MCCFR is 2-4x ahead of the curve shown here."
             ),
             kind="convergence",
             make_game=KuhnGame,

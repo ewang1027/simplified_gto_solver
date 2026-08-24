@@ -11,7 +11,7 @@ cd ~/simplified_gto_solver
 python -m venv .venv && source .venv/bin/activate
 pip install -e '.[dev]'
 
-pytest          # 466 tests, ~45s
+pytest          # 503 tests, ~50s
 ruff check .
 gto solve       # Kuhn demo: exploitability + solved strategies
 gto --help      # solve / algorithms / games / benchmark / microstructure
@@ -40,7 +40,7 @@ compare against.
 
 ## Status
 
-Phases 1–8 of 10 complete. Phase 9 (Deep CFR) is next.
+Phases 1–9 of 10 complete. Phase 10 (architecture writeup and docs polish) is next.
 
 | Phase | Work | Status |
 |---|---|---|
@@ -52,8 +52,8 @@ Phases 1–8 of 10 complete. Phase 9 (Deep CFR) is next.
 | 6 | Performance engineering — profiling, optimized hot loop, published throughput | done |
 | 7 | CLI (typer) | done |
 | 8 | Interactive dashboard (Streamlit) | done |
-| 9 | Deep CFR — neural regret approximation vs tabular ground truth | next |
-| 10 | Architecture writeup and docs polish | |
+| 9 | Deep CFR — neural regret approximation vs tabular ground truth | done |
+| 10 | Architecture writeup and docs polish | next |
 
 Stretch, unscheduled: NFSP (Neural Fictitious Self-Play).
 
@@ -479,28 +479,106 @@ surface nothing else exercises.
 
 ---
 
-## Next up: Phase 9
+## Phase 9 — Deep CFR (2026-08-24)
 
-Deep CFR — neural regret approximation, scored against the tabular ground truth this
-project already has.
+Counterfactual regret with a learned value function, scored by exploitability against
+games this project solves exactly. That scoring is the reason to build it here: a real
+application of Deep CFR has no ground truth to check against, and this one does.
+
+**Deviation from the Phase 8 plan, made deliberately.** That plan said to add `torch` as
+an `[nn]` extra. For a two-hidden-layer network over a twelve-element input, a
+deep-learning framework is a heavy CI dependency bought for no understanding, and this
+project's claim is that the machinery is from scratch. `nn/mlp.py` is ~80 lines of numpy
+with Adam and per-sample weights, and **no new dependency was added at all**.
+
+The risk that buys is hand-written backpropagation being quietly wrong — a gradient off by
+a constant factor still trains, just worse, and Adam normalizes by the gradient's own
+second moment, so neither a scale error nor a sign error in one layer shows up in a loss
+curve. Every weight and every bias is checked against a central finite difference to 1e-6.
+
+### The finding about the architecture
+
+**Deep CFR does not compose from `RegretUpdateRule` × `Traversal`.** Those two abstractions
+carry every tabular variant here — vanilla, CFR+, DCFR, Linear, alternating, external
+sampling — because each differs only in how cumulative regret becomes a strategy, or how
+one iteration walks the tree. Deep CFR changes neither. It changes *what the regret store
+is*.
+
+That is a real limit of the design and it is recorded rather than papered over.
+`AlgorithmSpec` grew a `make_solver` escape hatch and a `composed` flag; a test asserts
+`deep_cfr` is the **only** uncomposed variant, so a future one quietly bypassing the design
+shows up as a failure. What is still shared is the part that makes the comparison worth
+anything: the same `average_strategy()` surface, so `metrics/exploitability.py` grades it
+on the same yardstick and the Phase 5 harness measures it with the same seeds and bands.
+
+`GameState.features()` joins `payouts()` as an optional method defaulting to None. Tabular
+CFR needs only `info_set_key`, which says *whether* two states are the same; a network
+needs to know how they are *related*, which a key cannot express — one-hot encoding the key
+would give the network nothing to generalize over and reduce Deep CFR to a slower tabular
+solver. Glosten–Milgrom returns None and Deep CFR refuses it with an explanation rather
+than inventing an encoding on the game's behalf.
+
+### The result, and the trap it walked into
+
+| Iterations | Vanilla | MCCFR median | Deep CFR median |
+|---:|---:|---:|---:|
+| 22 | 0.0567 | 0.2320 | 0.0691 |
+| 96 | 0.0238 | 0.0993 | 0.0502 |
+| 200 | 0.0119 | 0.0676 | 0.0356 |
+
+At equal iterations Deep CFR beats MCCFR by 2–3×. **That is an artifact of the axis, and it
+is the third time this project has hit the same trap in a different disguise:** Phase 5
+found that exact and sampled iterations are not comparable, Phase 6 that a wall-clock
+comparison between traversals is a statement about an implementation, and now this. One
+Deep CFR iteration runs **30 sampled traversals per player** where MCCFR runs one, so equal
+iterations is not equal work. Normalized by traversals against MCCFR's own published curve,
+**MCCFR is 2.1–3.9× ahead** — at 200 Deep CFR iterations (12,000 traversals) Deep CFR is at
+0.0356 where MCCFR at 6,000 iterations is at 0.0103.
+
+So Deep CFR loses to both tabular CFR and MCCFR here, which is the design working. It
+exists for games whose info sets cannot be enumerated; on twelve of them, approximating a
+table is worse than being one. The caveat is written into the suite's subtitle, so it
+travels with the results file and is printed on the chart rather than living only here.
+
+One thing it does win: its seed envelope is **narrower** than MCCFR's — 1.36× against 1.87×
+between the luckiest and unluckiest of ten seeds — because the network averages over many
+samples per info set instead of counting visits to each separately.
+
+### Also worth knowing
+
+- **The harness does not charge `average_strategy()` to training time**, for any solver.
+  For the tabular ones that is a normalization of sums; for Deep CFR it is a policy-network
+  fit. Deep CFR's reported iterations/sec is therefore flattered relative to tabular, which
+  is why the comparison above is on iterations and traversals, never throughput.
+- A backtick inside a double-quoted shell string is command substitution, and zsh ate one
+  word of the Deep CFR commit message before it was pushed. Cosmetic, left alone rather
+  than force-pushed over. Commit messages after that one go through a file.
+
+---
+
+## Next up: Phase 10
+
+Architecture writeup and docs polish — the last scheduled phase.
 
 Specifics that matter:
-- The point of the phase is the *comparison*, not the network. Kuhn and Leduc are solved
-  exactly here, so a neural approximation can be scored by exploitability against a known
-  answer rather than by a training loss that means nothing on its own.
-- Add `torch` as an `[nn]` extra, never a core dependency, and keep the package importable
-  without it — the rule `plots.py` and `dashboard.py` both follow.
-- A neural variant is stochastic, so it is reported over **>= 10 seeds with bands** like
-  every other sampled result. Expect wide envelopes and say so.
-- It will not beat tabular CFR on games this small, and that is the expected result rather
-  than a failure: Deep CFR exists for games whose info sets cannot be enumerated. Report it
-  as measured, the way DCFR and MCCFR were.
+- `ARCHITECTURE.md` predates the benchmark harness, the CLI, the dashboard and Deep CFR.
+  It has been extended four times; it wants a read-through as one document rather than a
+  fifth append.
+- The recurring lesson deserves stating once, properly, in one place: **iterations,
+  seconds and traversals are three different axes, and every cross-algorithm comparison in
+  this project has had to name which one it is on.** It has been rediscovered in Phases 5,
+  6 and 9.
+- Check every number in every document against `results/*.json` and the code, the way the
+  README tables are already checked. Phase 5 and Phase 9 both caught a wrong claim that
+  way, and both times the draft was the thing that was wrong.
 
 Still open, carried forward:
 - **CFR+ loses to vanilla on both non-Kuhn games** and nobody knows why. The update
   schedule is ruled out and so is a slow start (Phase 5). It wants a correctness review of
   `CFRPlusRegretMatching` against Tammelin 2014, not another benchmark.
 - The next performance step trades bit-identical curves for speed; see Phase 6.
+- Deep CFR is only wired up for the two poker games. Glosten–Milgrom would need a
+  `features()` encoding of its 33-quote action space to join them.
 
 ## Conventions
 
