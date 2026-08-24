@@ -155,7 +155,7 @@ class LeducState(GameState):
         r2 = _history_str(self.round2)
         return f"{rank}{board_rank}|{r1}|{r2}"
 
-    def payout(self, player: int) -> float:
+    def _p0_payout(self) -> float:
         r1_p0, r1_p1 = _round_contributions(self.round1, ROUND1_BET)
         r2_p0, r2_p1 = _round_contributions(self.round2, ROUND2_BET) if self.board is not None else (0, 0)
         contrib = (ANTE + r1_p0 + r2_p0, ANTE + r1_p1 + r2_p1)
@@ -170,7 +170,15 @@ class LeducState(GameState):
         if winner is None:
             return 0.0
         loser_contrib = contrib[1 - winner]
-        return float(loser_contrib if player == winner else -loser_contrib)
+        return float(loser_contrib if winner == 0 else -loser_contrib)
+
+    def payout(self, player: int) -> float:
+        p0_payout = self._p0_payout()
+        return p0_payout if player == 0 else -p0_payout
+
+    def payouts(self, num_players: int) -> list[float]:
+        p0_payout = self._p0_payout()
+        return [p0_payout, -p0_payout]
 
 
 class LeducGame(Game):

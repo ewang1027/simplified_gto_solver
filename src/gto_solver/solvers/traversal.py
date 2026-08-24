@@ -32,16 +32,37 @@ class FullTraversal(Traversal):
         rng: np.random.Generator,
     ) -> np.ndarray:
         num_players = game.num_players
-        reach = np.ones(num_players + 1, dtype=np.float64)
+        # A plain list, not an ndarray: it is copied once per action at every
+        # decision node, and copying a three-element list is far cheaper than
+        # copying an array. Nothing here needs vectorized arithmetic.
+        reach = [1.0] * (num_players + 1)
         update_player = (iteration - 1) % num_players if self.alternating else None
         return _walk(
             game.new_initial_state(), reach, num_players, store, rule, iteration, update_player
         )
 
 
+def _counterfactual_reach(reach: list[float], player: int) -> float:
+    """Probability of reaching this node under everyone else's play — opponents and
+    chance — with `player`'s own contribution left out. That omission is what makes
+    the regret "counterfactual".
+
+    Written as a loop rather than `np.prod(np.delete(reach, player))`, which was 14%
+    of a Leduc training run on its own: `delete` allocates a new array for every
+    decision node visited, to drop one element from a list of three. The arithmetic
+    is identical — `delete` preserves order and `prod` multiplies left to right — so
+    the result is bit-for-bit what it was.
+    """
+    product = 1.0
+    for index, value in enumerate(reach):
+        if index != player:
+            product *= value
+    return product
+
+
 def _walk(
     state: GameState,
-    reach: np.ndarray,
+    reach: list[float],
     num_players: int,
     store: InfoSetStore,
     rule: RegretUpdateRule,
@@ -52,12 +73,16 @@ def _walk(
     way. Returns the per-player expected payoff vector for `state`.
 
     `reach` has length num_players + 1: reach[i] is player i's contribution to
-    reaching `state`, and reach[-1] is chance's contribution. `update_player`
+    reaching `state`, and reach[-1] is chance's contribution. It is a plain list;
+    see run_iteration. `update_player`
     restricts accumulation to one player's info sets (alternating updates); None
     updates everyone, i.e. plain simultaneous-update CFR.
     """
     if state.is_terminal():
-        return np.array([state.payout(p) for p in range(num_players)], dtype=np.float64)
+        # payouts() rather than a payout() per player: a two-player zero-sum game
+        # computes the same quantity both times, so asking once halves the work at
+        # every terminal node, and terminals are most of the tree.
+        return np.array(state.payouts(num_players), dtype=np.float64)
 
     if state.is_chance():
         value = np.zeros(num_players, dtype=np.float64)
@@ -87,9 +112,7 @@ def _walk(
     node_value = strategy @ action_values
 
     if update_player is None or player == update_player:
-        # Counterfactual reach for `player`: probability of reaching this node under
-        # everyone else's play (opponents and chance), excluding player's own reach.
-        cf_reach = np.prod(np.delete(reach, player))
+        cf_reach = _counterfactual_reach(reach, player)
         regrets = cf_reach * (action_values[:, player] - node_value[player])
         rule.accumulate_regret(record, regrets, iteration)
         rule.accumulate_strategy(record, strategy, reach[player], iteration)
@@ -140,7 +163,10 @@ def _sample_walk(
     actions, single-sample (but unbiased) over everyone else's actions and chance.
     """
     if state.is_terminal():
-        return np.array([state.payout(p) for p in range(num_players)], dtype=np.float64)
+        # payouts() rather than a payout() per player: a two-player zero-sum game
+        # computes the same quantity both times, so asking once halves the work at
+        # every terminal node, and terminals are most of the tree.
+        return np.array(state.payouts(num_players), dtype=np.float64)
 
     if state.is_chance():
         outcomes, probs = zip(*state.chance_outcomes())

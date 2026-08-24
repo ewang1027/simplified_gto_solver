@@ -46,6 +46,21 @@ class GameState(ABC):
     def payout(self, player: int) -> float:
         """Terminal payoff for `player`."""
 
+    def payouts(self, num_players: int) -> list[float]:
+        """Terminal payoff for every player, as one call.
+
+        Optional: the default below is correct for any game and needs no override.
+        It exists because `payout(player)` is called once per player at every
+        terminal node, and a two-player zero-sum game computes the same thing both
+        times — Leduc rebuilds both players' chip contributions and re-decides the
+        winner on each call, so the default costs exactly twice what it needs to.
+        A game that can share that work overrides this and returns the vector.
+
+        Whatever a game returns here must agree with `payout` exactly; the tests
+        check both against each other at every terminal node of every game.
+        """
+        return [self.payout(player) for player in range(num_players)]
+
 
 class Game(ABC):
     """Factory and static metadata for a game."""

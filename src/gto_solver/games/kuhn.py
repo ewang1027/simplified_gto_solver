@@ -66,7 +66,7 @@ class KuhnState(GameState):
         action_str = "".join("b" if a == BET else "c" for a in self.history)
         return f"{card}|{action_str}"
 
-    def payout(self, player: int) -> float:
+    def _p0_payout(self) -> float:
         h = self.history
         p0_card, p1_card = self.cards
         p0_wins = p0_card > p1_card
@@ -82,7 +82,15 @@ class KuhnState(GameState):
         else:
             raise ValueError(f"Invalid history: {h}")
 
+        return p0_payout
+
+    def payout(self, player: int) -> float:
+        p0_payout = self._p0_payout()
         return p0_payout if player == 0 else -p0_payout
+
+    def payouts(self, num_players: int) -> list[float]:
+        p0_payout = self._p0_payout()
+        return [p0_payout, -p0_payout]
 
 
 class KuhnGame(Game):

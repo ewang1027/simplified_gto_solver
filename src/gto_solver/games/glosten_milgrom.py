@@ -134,14 +134,22 @@ class GlostenMilgromState(GameState):
             return flow_str
         return f"{self.value:.6f}|{flow_str}|{self.quote:.6f}"  # informed trader
 
-    def payout(self, player: int) -> float:
+    def _p0_payout(self) -> float:
         total = 0.0
         for outcome, s in zip(self.flow_history, self.quote_history):
             if outcome == BUY:  # maker sells at the ask, delivers an asset worth V
                 total += s - self.value
             elif outcome == SELL:  # maker buys at the bid, receives an asset worth V
                 total += self.value + s
+        return total
+
+    def payout(self, player: int) -> float:
+        total = self._p0_payout()
         return total if player == 0 else -total
+
+    def payouts(self, num_players: int) -> list[float]:
+        total = self._p0_payout()
+        return [total, -total]
 
 
 class GlostenMilgromGame(Game):
