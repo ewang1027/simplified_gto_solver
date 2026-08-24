@@ -19,12 +19,13 @@ dependencies = [
 dev = [
     "pytest",
     "ruff",
-    "matplotlib",
+    # >=3.6 for the legend's ncols argument, which the chart layout depends on.
+    "matplotlib>=3.6",
 ]
 # Charts for benchmark results. Optional: the solver, the metrics and the whole
 # test suite run without it, and only scripts/benchmark.py's plotting needs it.
 viz = [
-    "matplotlib",
+    "matplotlib>=3.6",
 ]
 # Reserved for the Deep CFR phase (neural regret approximation); no heavy
 # dependency is pulled in until that phase starts.
