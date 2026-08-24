@@ -293,6 +293,12 @@ has to prove it changed the clock and nothing else.
 
     max exploitability delta: 0.000e+00 on every run of every convergence suite
 
+A second, independent confirmation fell out of the re-run for free: of the seven committed
+chart PNGs, **six came back byte-identical** and only `leduc_wallclock.png` changed. The
+three convergence suites redrew pixel for pixel from a full re-measurement on optimized
+code, and the one chart that moved is the one whose axis is seconds. `--compare` and the
+image diff disagree about nothing.
+
 ### The three changes, in the order profiling found them
 
 `scripts/profile_hotloop.py` prints the ranking and a per-node cost. The per-node figure is
