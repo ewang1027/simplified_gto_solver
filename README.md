@@ -11,8 +11,9 @@ selection and bid-ask spreads.
 
 ## Status
 
-Phases 1–4 of 10 complete: the engine, four CFR variants, two poker games, and the
-market-microstructure centerpiece. See [Roadmap](#roadmap) for what's next.
+Phases 1–5 of 10 complete: the engine, seven CFR variants, two poker games, the
+market-microstructure centerpiece, and a multi-seed benchmarking harness. See
+[Roadmap](#roadmap) for what's next.
 
 ## Market microstructure
 
@@ -141,14 +142,22 @@ src/gto_solver/
 ├── solvers/
 │   ├── base.py            InfoSetStore, RegretUpdateRule, Traversal, CFRSolver
 │   ├── regret_rules.py    Vanilla / CFR+ / Discounted (and Linear) CFR
-│   └── traversal.py       FullTraversal (exact, optional alternating updates),
-│                          ExternalSamplingMCCFR
+│   ├── traversal.py       FullTraversal (exact, optional alternating updates),
+│   │                      ExternalSamplingMCCFR
+│   └── registry.py        The named (rule x traversal) variants, in one place
 ├── analysis/
 │   ├── microstructure.py  Competitive + strategic GM benchmarks
 │   └── kyle.py            Kyle (1985) fixed-point solver
-└── metrics/
-    ├── evaluation.py      Expected value of a fixed strategy profile
-    └── exploitability.py  Best-response computation
+├── metrics/
+│   ├── evaluation.py      Expected value of a fixed strategy profile
+│   └── exploitability.py  Best-response computation
+└── benchmark/
+    ├── stats.py           Seed envelopes and bootstrap confidence intervals
+    ├── runner.py          Multi-seed convergence and wall-clock measurement
+    ├── results.py         Serialization with provenance, plus before/after compare()
+    ├── suites.py          The published benchmark suites
+    ├── tables.py          The markdown tables below, regenerated from results
+    └── plots.py           Charts (needs the optional viz extra)
 ```
 
 Any regret rule composes with any traversal, so the four algorithms above are combinations
@@ -172,9 +181,24 @@ source .venv/bin/activate
 pip install -e '.[dev]'
 
 python main.py    # train on Kuhn poker, report exploitability + strategies
-pytest            # correctness suite (230 tests, ~33s)
+pytest            # correctness suite (375 tests, ~39s)
 ruff check .
 ```
+
+Benchmarks. Charts need the optional `viz` extra (`pip install -e '.[viz]'`); results are
+written whether or not it is installed.
+
+```bash
+python scripts/benchmark.py           # the published suites -- about 12 minutes
+python scripts/benchmark.py --quick   # a smoke run in seconds; NOT the published numbers
+python scripts/benchmark.py --list    # what suites exist
+python scripts/benchmark.py --compare results/before.json results/after.json
+```
+
+Results land in `results/*.json` with provenance (interpreter, numpy, machine, commit, and
+whether the tree was dirty), and the markdown tables below are pasted from what the script
+prints. `--compare` is the before/after check an optimization has to pass: throughput may
+move, per-iteration convergence curves may not.
 
 ## Documentation
 
@@ -241,8 +265,8 @@ vary between runs — but the game value is always −1/18 at equilibrium.
 | 2 | CFR+, Discounted/Linear CFR, external-sampling MCCFR | done |
 | 3 | Leduc Hold'em — validates the abstraction generalizes | done |
 | 4 | **Market microstructure: Kyle (1985) and Glosten–Milgrom** — the centerpiece | done |
-| 5 | Multi-seed benchmarking with confidence bands, convergence plots | next |
-| 6 | Performance engineering — profiling, optimized hot loop, published throughput | |
+| 5 | Multi-seed benchmarking with confidence bands, convergence plots | done |
+| 6 | Performance engineering — profiling, optimized hot loop, published throughput | next |
 | 7 | CLI | |
 | 8 | Interactive dashboard | |
 | 9 | Deep CFR — neural regret approximation, scored against tabular ground truth | |

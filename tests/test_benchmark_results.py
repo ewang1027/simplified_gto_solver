@@ -48,7 +48,7 @@ def test_provenance_records_what_makes_two_files_comparable():
     got = provenance()
     for key in ("created_utc", "python", "numpy", "platform", "machine", "git"):
         assert key in got, key
-    assert set(got["git"]) == {"commit", "dirty", "detail"}
+    assert set(got["git"]) == {"commit", "dirty", "dirty_paths", "detail"}
 
 
 def test_provenance_is_json_serializable():
@@ -192,11 +192,17 @@ def test_a_dirty_tree_is_flagged(results):
         results,
         provenance={
             **results.provenance,
-            "git": {"commit": "abc1234", "dirty": True, "detail": None},
+            "git": {
+                "commit": "abc1234",
+                "dirty": True,
+                "dirty_paths": ["src/gto_solver/solvers/traversal.py"],
+                "detail": None,
+            },
         },
     )
     report = compare(dirty, dirty)
     assert sum("dirty working tree" in note for note in report.notes) == 2
+    assert all("traversal.py" in note for note in report.notes)
 
 
 def test_tolerance_absorbs_floating_point_reassociation(results):

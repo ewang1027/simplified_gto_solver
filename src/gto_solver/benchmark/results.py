@@ -36,6 +36,10 @@ SCHEMA_VERSION = 1
 # floating-point sums (e.g. a vectorized regret update) and land a few ulps away.
 DEFAULT_CURVE_TOLERANCE = 1e-9
 
+# Enough dirty paths to see what kind of change it was, without pasting a whole
+# working tree into a results file.
+_MAX_DIRTY_PATHS = 10
+
 
 def _git_description(repo: Path) -> dict:
     """Commit and dirty-flag for `repo`, or a reason it could not be determined.
@@ -55,11 +59,21 @@ def _git_description(repo: Path) -> dict:
 
     commit = run("git", "rev-parse", "--short", "HEAD")
     if commit is None:
-        return {"commit": None, "dirty": None, "detail": "not a git checkout, or git unavailable"}
+        return {
+            "commit": None,
+            "dirty": None,
+            "dirty_paths": [],
+            "detail": "not a git checkout, or git unavailable",
+        }
     status = run("git", "status", "--porcelain")
+    # Which paths were dirty, not just that something was: "dirty" alone leaves the
+    # next reader unable to tell an edited docstring from an edited hot loop, and
+    # that is the first question anyone asks of a suspect measurement.
+    paths = [line[3:] for line in status.splitlines()][:_MAX_DIRTY_PATHS] if status else []
     return {
         "commit": commit,
         "dirty": bool(status) if status is not None else None,
+        "dirty_paths": paths,
         "detail": None if not status else "tree had uncommitted changes when this was measured",
     }
 
@@ -216,8 +230,9 @@ def _provenance_notes(baseline: BenchmarkResults, candidate: BenchmarkResults) -
         if results.provenance.get("git", {}).get("dirty"):
             notes.append(
                 f"{name} was measured against a dirty working tree "
-                f"(commit {results.provenance['git'].get('commit')}), so the code that "
-                f"produced it is not fully recoverable from git."
+                f"(commit {results.provenance['git'].get('commit')}, changed: "
+                f"{', '.join(results.provenance['git'].get('dirty_paths') or ['unrecorded'])}), "
+                f"so the code that produced it is not fully recoverable from git."
             )
     return notes
 

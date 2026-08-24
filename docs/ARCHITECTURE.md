@@ -71,6 +71,58 @@ follows it. Use it, not a solver's per-iteration return value, to evaluate a str
 per-iteration value reflects the current regret-matching strategy, which oscillates, whereas
 the **average** strategy is what converges.
 
+## Measuring: what a benchmark number has to survive
+
+`benchmark/`. Exploitability says whether the solver is right; this says whether a claim
+about it is worth anything. The harness exists because Phase 6 optimizes the hot loop, and
+"1.8x faster" means nothing unless before and after were measured the same way.
+
+**Two bands, two questions.** `stats.py` computes both and never lets them be confused:
+
+- The **seed envelope** (10th–90th percentile across seeds) says how much individual runs
+  differ. It is a property of the algorithm's variance, so it does *not* shrink as more
+  seeds are added.
+- The **bootstrap CI of the median** says how well N seeds pin the centre down. It *does*
+  shrink as N grows.
+
+Charts shade the envelope, tables quote the CI, and both say which they are. Swapping them
+would make a noisy algorithm look precise just by running it more times, which is why the
+distinction is pinned by a test rather than left to discipline.
+
+The central statistic is the median, not the mean: exploitability across seeds is positive,
+right-skewed and read on a log axis, where one unlucky seed drags a mean somewhere no run
+actually visited.
+
+**Three rules are enforced in code**, because each has a failure mode that produces a
+plausible-looking wrong answer:
+
+1. **Evaluating exploitability is never charged to the solver's clock.** Measuring costs
+   56 ms on Leduc against a 31 ms iteration. Charge it and whichever configuration was
+   measured at more checkpoints reports lower throughput for identical work — the
+   exact-vs-sampled comparison would then be an artifact of how often it was observed.
+2. **Deterministic variants are run once.** `FullTraversal` never touches the rng, so every
+   seed produces a bit-identical strategy. Twenty seeds would publish a band of width zero
+   as though variance had been measured and found small, rather than being absent by
+   construction. The flag asserting this is checked by `verify_determinism()`, in both
+   directions: exact variants must match bit for bit, sampled ones must not.
+3. **Nothing is capped, reduced or skipped in silence.** A reduced seed count, a quick
+   profile, a wall-clock checkpoint that had to be overshot — each lands in `notes`, which
+   is serialized with the results and printed by the script. A benchmark that quietly
+   shrinks its own workload reads later as a clean result.
+
+**Iterations and seconds are different axes, on purpose.** A convergence run is indexed by
+iteration count, so its curve is pure math and a faithful optimization must leave it
+*unchanged*. A wall-clock run is indexed by seconds, so its curve is *supposed* to move.
+`compare()` therefore checks the first for equality and the second for throughput; checking
+both the same way would either flag every successful optimization as a regression or let a
+changed algorithm pass as a speedup. Comparing iterations across traversals is the same
+category error: one MCCFR iteration is a single sampled path, one exact iteration is the
+whole tree.
+
+Results carry provenance — interpreter, numpy, machine, commit, and whether the tree was
+dirty — because a timing number without the machine it ran on is not a measurement, and a
+"reproduce this" pointing at a commit is worthless if the tree had uncommitted edits.
+
 ## Microstructure: modeling assumptions
 
 Stated plainly because a reader will ask.
@@ -109,8 +161,14 @@ Stated plainly because a reader will ask.
 ### Add an algorithm variant
 
 Add a `RegretUpdateRule` to `solvers/regret_rules.py` or a `Traversal` to
-`solvers/traversal.py`. Do not fork the engine. New traversals must take all randomness from
-the passed-in `rng` so `CFRSolver(..., seed=)` stays reproducible.
+`solvers/traversal.py`, then register the combination in `solvers/registry.py` so the
+benchmark, and anything else that names a variant in a string, can find it. Do not fork the
+engine. New traversals must take all randomness from the passed-in `rng` so
+`CFRSolver(..., seed=)` stays reproducible.
+
+Set `deterministic` on the registry entry honestly: it decides whether the benchmark runs
+one seed or twenty, and it is checked by running the seeds, so a wrong value fails a test
+rather than silently publishing a stochastic variant as a single run.
 
 Validate with exploitability trending to zero — and report what you measure. Two variants
 here (DCFR, alternating updates) do *not* beat the baseline on small games, and that is
@@ -123,18 +181,33 @@ them worth anything: **a benchmark must share no code with the solver it checks.
 Glosten–Milgrom benchmark is an independent exhaustive grid search, which is why the solver
 matching it is evidence rather than a tautology.
 
+*Performance* benchmarks are different work and live in `src/gto_solver/benchmark/`. Add a
+`Suite` to `benchmark/suites.py` — a game, a list of algorithm names, and the checkpoints to
+measure at — and `scripts/benchmark.py` picks it up. Anything stochastic gets at least ten
+seeds; a suite that breaks that rule fails a test. Do not measure timings from a script of
+your own: everything published goes through `benchmark/runner.py` so a later phase can
+compare against it.
+
 ## Layout
 
 ```
 src/gto_solver/
 ├── games/          base.py, kuhn.py, leduc.py, glosten_milgrom.py
-├── solvers/        base.py, regret_rules.py, traversal.py
+├── solvers/        base.py, regret_rules.py, traversal.py, registry.py
 ├── analysis/       microstructure.py (GM benchmarks), kyle.py (fixed-point solver)
-└── metrics/        exploitability.py, evaluation.py
+├── metrics/        exploitability.py, evaluation.py
+└── benchmark/      stats.py, runner.py, results.py, suites.py, tables.py, plots.py
 tests/              one file per module, plus test_microstructure_gate.py
 docs/               BUILDLOG.md, ARCHITECTURE.md, phase4-microstructure-design.md
+results/            benchmark results as JSON, with provenance
+scripts/            verify_phase4.py (regenerates the design doc's numbers),
+                    benchmark.py (runs the suites, writes results and charts)
 main.py             Kuhn demo entry point (a real CLI is Phase 7)
 ```
+
+`benchmark/plots.py` is the one module that needs an optional dependency (matplotlib, via
+the `viz` extra). It is deliberately not imported from `benchmark/__init__.py`, so importing
+the package — or running the tests — never requires it.
 
 `tests/test_microstructure_gate.py` is the cross-cutting one: it checks the solver, the
 game, and the independent benchmark all agree. That is the test the microstructure phase
