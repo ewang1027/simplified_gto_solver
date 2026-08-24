@@ -11,10 +11,10 @@ selection and bid-ask spreads.
 
 ## Status
 
-Phases 1–7 of 10 complete: the engine, seven CFR variants, two poker games, the
+Phases 1–8 of 10 complete: the engine, seven CFR variants, two poker games, the
 market-microstructure centerpiece, a multi-seed benchmarking harness, a 2–3× optimization
-of the hot loop that leaves every convergence curve bit-identical, and the `gto` CLI. See
-[Roadmap](#roadmap) for what's next.
+of the hot loop that leaves every convergence curve bit-identical, the `gto` CLI, and an
+interactive dashboard. See [Roadmap](#roadmap) for what's next.
 
 ## Market microstructure
 
@@ -299,7 +299,8 @@ src/gto_solver/
 │   ├── tables.py          The markdown tables below, regenerated from results
 │   ├── reporting.py       Running suites and printing what happened
 │   └── plots.py           Charts (needs the optional viz extra)
-└── cli.py                 The `gto` command line
+├── cli.py                 The `gto` command line
+└── dashboard.py           The Streamlit app (needs the optional dashboard extra)
 ```
 
 Any regret rule composes with any traversal, so the seven named variants in
@@ -330,7 +331,7 @@ pip install -e '.[dev]'
 
 gto --help        # the CLI, installed with the package
 gto solve         # train on Kuhn poker, report exploitability + strategies
-pytest            # correctness suite (455 tests, ~35s)
+pytest            # correctness suite (466 tests, ~45s)
 ruff check .
 ```
 
@@ -340,7 +341,13 @@ gto solve --game gm --mu 0.7 --json        # machine-readable, full strategy
 gto algorithms                             # the seven variants and what they are
 gto games                                  # the three games and their parameters
 gto microstructure                         # solved spread vs both benchmarks
+gto dashboard                              # interactive, needs the dashboard extra
 ```
+
+The dashboard (`pip install -e '.[dashboard]'`) has three tabs: solve a game live, browse
+the published benchmark results with their notes and provenance, and explore the
+market-making spread against both analytic benchmarks. It reads `results/*.json` rather
+than re-measuring, and draws the same figures the charts above are made from.
 
 Benchmarks. Charts need the optional `viz` extra (`pip install -e '.[viz]'`); results are
 written whether or not it is installed.
@@ -429,8 +436,8 @@ vary between runs — but the game value is always −1/18 at equilibrium.
 | 5 | Multi-seed benchmarking with confidence bands, convergence plots | done |
 | 6 | Performance engineering — profiling, optimized hot loop, published throughput | done |
 | 7 | CLI (`gto solve` / `benchmark` / `microstructure`) | done |
-| 8 | Interactive dashboard | next |
-| 9 | Deep CFR — neural regret approximation, scored against tabular ground truth | |
+| 8 | Interactive dashboard (`gto dashboard`) | done |
+| 9 | Deep CFR — neural regret approximation, scored against tabular ground truth | next |
 | 10 | Architecture writeup and docs | |
 
 Phase 4 was the point of the project, and its results are above. The design was worked out

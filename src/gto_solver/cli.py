@@ -225,6 +225,33 @@ def benchmark(
 
 
 @app.command()
+def dashboard(
+    port: Annotated[int, typer.Option(help="Port to serve on.")] = 8501,
+    headless: Annotated[bool, typer.Option(help="Do not open a browser.")] = False,
+) -> None:
+    """Launch the interactive dashboard (needs the dashboard extra)."""
+    try:
+        from streamlit.web import cli as streamlit_cli  # noqa: F401
+    except ImportError:
+        _fail(
+            "the dashboard needs streamlit, an optional dependency. "
+            "Install it with: pip install -e '.[dashboard]'"
+        )
+
+    import subprocess
+    import sys
+
+    script = Path(__file__).resolve().parent / "dashboard.py"
+    command = [
+        sys.executable, "-m", "streamlit", "run", str(script),
+        "--server.port", str(port),
+        "--server.headless", "true" if headless else "false",
+    ]
+    typer.echo(f"Starting the dashboard on http://localhost:{port} — Ctrl-C to stop.")
+    raise typer.Exit(code=subprocess.call(command))
+
+
+@app.command()
 def microstructure(
     mus: Annotated[
         list[float] | None, typer.Option("--mu", help="Informed shares to solve.")

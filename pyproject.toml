@@ -28,10 +28,21 @@ dev = [
     "ruff",
     # >=3.6 for the legend's ncols argument, which the chart layout depends on.
     "matplotlib>=3.6",
+    # So CI actually drives the dashboard rather than skipping over it. It is a
+    # 20-second install and AppTest runs the real app, which is worth it for a
+    # surface nothing else exercises.
+    "streamlit>=1.28",
 ]
 # Charts for benchmark results. Optional: the solver, the metrics and the whole
-# test suite run without it, and only scripts/benchmark.py's plotting needs it.
+# test suite run without it, and only `gto benchmark`'s plotting needs it.
 viz = [
+    "matplotlib>=3.6",
+]
+# The interactive dashboard. Optional and heavier than everything else here, so it
+# is not pulled in by default; nothing in the package imports gto_solver.dashboard.
+# >=1.28 for streamlit.testing.v1.AppTest, which the dashboard's tests drive it with.
+dashboard = [
+    "streamlit>=1.28",
     "matplotlib>=3.6",
 ]
 # Reserved for the Deep CFR phase (neural regret approximation); no heavy

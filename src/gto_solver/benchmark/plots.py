@@ -129,15 +129,17 @@ def _save(fig, path: str | Path, dpi: int) -> Path:
     return path
 
 
-def plot_convergence(
+def figure_convergence(
     runs: Sequence[ConvergenceRun],
-    path: str | Path,
     title: str = "CFR variants on Kuhn poker",
     subtitle: str | None = None,
     envelope: tuple[float, float] = DEFAULT_ENVELOPE,
-    dpi: int = 160,
-) -> Path:
-    """Exploitability against iteration count, log-log, one line per variant."""
+):
+    """Exploitability against iteration count, log-log, one line per variant.
+
+    Returns the figure rather than saving it, so the dashboard renders exactly the
+    chart the README publishes instead of drawing its own lookalike.
+    """
     Figure = _require_matplotlib()
     if not runs:
         raise ValueError("plot_convergence needs at least one run")
@@ -171,18 +173,28 @@ def plot_convergence(
         f"envelope (spread across runs, not a confidence interval).  "
         f"Exploitability evaluation is excluded from every timing.",
     )
-    return _save(fig, path, dpi)
+    return fig
 
 
-def plot_wallclock(
-    runs: Sequence[WallclockRun],
+def plot_convergence(
+    runs: Sequence[ConvergenceRun],
     path: str | Path,
+    title: str = "CFR variants on Kuhn poker",
+    subtitle: str | None = None,
+    envelope: tuple[float, float] = DEFAULT_ENVELOPE,
+    dpi: int = 160,
+) -> Path:
+    """`figure_convergence`, saved."""
+    return _save(figure_convergence(runs, title, subtitle, envelope), path, dpi)
+
+
+def figure_wallclock(
+    runs: Sequence[WallclockRun],
     title: str = "Exact traversal vs sampling at equal wall-clock budget",
     subtitle: str | None = None,
     envelope: tuple[float, float] = DEFAULT_ENVELOPE,
     annotate_iterations: bool = True,
-    dpi: int = 160,
-) -> Path:
+):
     """Exploitability against training seconds -- the only currency exact traversal
     and sampling share, since one MCCFR iteration is a sampled path and one exact
     iteration is a whole tree.
@@ -230,17 +242,29 @@ def plot_wallclock(
         f"envelope.  Labels give iterations completed in the final budget.  "
         f"x is measured time, not requested budget.",
     )
-    return _save(fig, path, dpi)
+    return fig
 
 
-def plot_seed_spread(
-    run: ConvergenceRun,
+def plot_wallclock(
+    runs: Sequence[WallclockRun],
     path: str | Path,
+    title: str = "Exact traversal vs sampling at equal wall-clock budget",
+    subtitle: str | None = None,
+    envelope: tuple[float, float] = DEFAULT_ENVELOPE,
+    annotate_iterations: bool = True,
+    dpi: int = 160,
+) -> Path:
+    """`figure_wallclock`, saved."""
+    figure = figure_wallclock(runs, title, subtitle, envelope, annotate_iterations)
+    return _save(figure, path, dpi)
+
+
+def figure_seed_spread(
+    run: ConvergenceRun,
     title: str | None = None,
     subtitle: str | None = None,
     envelope: tuple[float, float] = DEFAULT_ENVELOPE,
-    dpi: int = 160,
-) -> Path:
+):
     """Every individual seed of one stochastic run, drawn behind its median.
 
     This is the figure that argues for the rest of Phase 5. A single MCCFR curve
@@ -293,4 +317,16 @@ def plot_seed_spread(
         f"unluckiest.  The shaded band here is the bootstrap CI of the median -- how well "
         f"{len(run.seeds)} seeds pin the centre down -- not the spread between runs.",
     )
-    return _save(fig, path, dpi)
+    return fig
+
+
+def plot_seed_spread(
+    run: ConvergenceRun,
+    path: str | Path,
+    title: str | None = None,
+    subtitle: str | None = None,
+    envelope: tuple[float, float] = DEFAULT_ENVELOPE,
+    dpi: int = 160,
+) -> Path:
+    """`figure_seed_spread`, saved."""
+    return _save(figure_seed_spread(run, title, subtitle, envelope), path, dpi)

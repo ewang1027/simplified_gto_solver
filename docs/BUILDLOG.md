@@ -11,13 +11,14 @@ cd ~/simplified_gto_solver
 python -m venv .venv && source .venv/bin/activate
 pip install -e '.[dev]'
 
-pytest          # 455 tests, ~35s
+pytest          # 466 tests, ~45s
 ruff check .
 gto solve       # Kuhn demo: exploitability + solved strategies
 gto --help      # solve / algorithms / games / benchmark / microstructure
 
 gto benchmark --quick   # the benchmark harness, in seconds
 gto benchmark           # the published suites, about 10 minutes
+gto dashboard           # the Streamlit app, needs the dashboard extra
 ```
 
 Phases 1-6 ran `python main.py` and `python scripts/benchmark.py`; both were replaced by
@@ -39,7 +40,7 @@ compare against.
 
 ## Status
 
-Phases 1–7 of 10 complete. Phase 8 (interactive dashboard) is next.
+Phases 1–8 of 10 complete. Phase 9 (Deep CFR) is next.
 
 | Phase | Work | Status |
 |---|---|---|
@@ -50,8 +51,8 @@ Phases 1–7 of 10 complete. Phase 8 (interactive dashboard) is next.
 | 5 | Multi-seed benchmarking, confidence bands, convergence plots | done |
 | 6 | Performance engineering — profiling, optimized hot loop, published throughput | done |
 | 7 | CLI (typer) | done |
-| 8 | Interactive dashboard (Streamlit) | next |
-| 9 | Deep CFR — neural regret approximation vs tabular ground truth | |
+| 8 | Interactive dashboard (Streamlit) | done |
+| 9 | Deep CFR — neural regret approximation vs tabular ground truth | next |
 | 10 | Architecture writeup and docs polish | |
 
 Stretch, unscheduled: NFSP (Neural Fictitious Self-Play).
@@ -422,19 +423,78 @@ worth knowing before Phase 8 puts an exploitability number behind a slider.
 
 ---
 
-## Next up: Phase 8
+## Phase 8 — the dashboard (2026-08-24)
 
-An interactive dashboard (Streamlit) over the same registries and results the CLI uses.
+`gto dashboard`, a Streamlit app with three tabs: solve a game live, browse the published
+benchmarks, explore the market-making spread.
+
+**It reuses rather than reimplements, one level further than the CLI does.** A live solve
+goes through `benchmark/runner.py` and produces the same `ConvergenceRun` a benchmark
+produces, which is then drawn by the same `benchmark/plots.py` figure the README publishes.
+`plots.py` was split into `figure_*` builders and the `plot_*` wrappers that save them, so
+there is exactly one piece of charting code and the dashboard cannot drift into showing a
+lookalike that disagrees with the documents — a disagreement that would be invisible.
+
+### The rules the layout follows, and why each has teeth
+
+- **Nothing expensive runs on a slider drag.** Published suites are read from
+  `results/*.json` rather than re-measured: they took about twenty minutes to produce and a
+  twenty-second Leduc budget is not an interactive latency. A *live* Leduc solve is behind
+  an explicit button, because it walks 9,451 nodes per iteration where Kuhn walks 55.
+  Kuhn and Glosten-Milgrom solve on any widget change, cached on their arguments.
+- **Every band is the seed envelope, labelled as such** — inherited from `stats.py`, and
+  checked by a test that greps the rendered page for "never a confidence interval".
+- **The notes are rendered, not dropped.** They exist to stop a reduced or capped run from
+  reading like a complete one, so a dashboard that showed the numbers and hid them would
+  undo the point. Provenance — machine, commit, dirty flag — is on the page too.
+- **A seed input appears only for sampled variants**, as in the CLI. Beside a deterministic
+  run it would read as if it mattered.
+
+### Tested by driving the real app
+
+`streamlit.testing.v1.AppTest` runs the actual script, so the tests catch wiring failures
+rather than helper-function bugs: a widget key that does not exist, a figure built from the
+wrong object, an expensive solve firing on load. Eleven of them, including one that asserts
+Leduc does *not* solve until the button is pressed.
+
+**Three of those tests failed on first run and all three were the tests' fault, not the
+app's** — worth writing down because the shape recurs:
+
+1. `st.pyplot` reaches AppTest as an **image** element, not a "pyplot" one.
+2. Asserting `not app.metric` to mean "did not solve" is wrong, because the Microstructure
+   tab renders metrics on every load. Scoped to the Solve tab's own metric labels instead.
+3. Asserting on a slider's *label* to check the market-making parameter appeared is wrong
+   for the same reason — the Microstructure tab has a mu slider of its own that is always
+   present, so the assertion passed no matter what. Scoped by widget key.
+
+Two of those three would have passed for the wrong reason under a small change to the app.
+The fix in each case was to scope the assertion to the thing being tested, and one of them
+improved the app as well: two metrics both called "Exploitability" on one page is ambiguous
+for a reader, not only for a test, so the microstructure one is now "CFR exploitability".
+
+`streamlit` is an optional extra (`[dashboard]`); nothing in the package imports
+`gto_solver.dashboard`, so the solver, the CLI and the rest of the tests run without it. It
+is in `dev` too, so CI drives the app rather than skipping it — a 20-second install for a
+surface nothing else exercises.
+
+---
+
+## Next up: Phase 9
+
+Deep CFR — neural regret approximation, scored against the tabular ground truth this
+project already has.
 
 Specifics that matter:
-- Read `results/*.json` rather than re-running suites in the browser: a 20-second Leduc
-  budget is not an interactive latency, and the published numbers already exist.
-- Live solving is fine for Kuhn and Glosten-Milgrom, which are seconds; gate Leduc behind
-  an explicit control rather than solving it on a slider drag.
-- Any band drawn is the **seed envelope**, labelled as such, never the bootstrap CI. The
-  two answer different questions and the plots already keep them apart.
-- Add `streamlit` as an extra (`[dashboard]`), not a core dependency, and keep the package
-  importable without it — the same rule `plots.py` follows for matplotlib.
+- The point of the phase is the *comparison*, not the network. Kuhn and Leduc are solved
+  exactly here, so a neural approximation can be scored by exploitability against a known
+  answer rather than by a training loss that means nothing on its own.
+- Add `torch` as an `[nn]` extra, never a core dependency, and keep the package importable
+  without it — the rule `plots.py` and `dashboard.py` both follow.
+- A neural variant is stochastic, so it is reported over **>= 10 seeds with bands** like
+  every other sampled result. Expect wide envelopes and say so.
+- It will not beat tabular CFR on games this small, and that is the expected result rather
+  than a failure: Deep CFR exists for games whose info sets cannot be enumerated. Report it
+  as measured, the way DCFR and MCCFR were.
 
 Still open, carried forward:
 - **CFR+ loses to vanilla on both non-Kuhn games** and nobody knows why. The update

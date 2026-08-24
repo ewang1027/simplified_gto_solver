@@ -230,13 +230,21 @@ src/gto_solver/
 ├── metrics/        exploitability.py, evaluation.py
 ├── benchmark/      stats.py, runner.py, results.py, suites.py, tables.py,
 │                   reporting.py, plots.py
-└── cli.py          the `gto` command line
+├── cli.py          the `gto` command line
+└── dashboard.py    the Streamlit app (optional `dashboard` extra)
 tests/              one file per module, plus test_microstructure_gate.py
 docs/               BUILDLOG.md, ARCHITECTURE.md, phase4-microstructure-design.md
 results/            benchmark results as JSON, with provenance
 scripts/            verify_phase4.py (regenerates the design doc's numbers),
                     profile_hotloop.py (where the training time goes)
 ```
+
+`dashboard.py` follows the same rule one level further: a live solve goes through
+`benchmark/runner.py` and produces the same `ConvergenceRun` a benchmark does, which is then
+drawn by the same `benchmark/plots.py` figure the README publishes. A dashboard that drew
+its own lookalike chart from its own loop would eventually disagree with the documents, and
+the disagreement would be invisible. `plots.py` therefore exposes `figure_*` builders as
+well as the `plot_*` functions that save them.
 
 `cli.py` selects from the registries — `games/registry.py`, `solvers/registry.py`,
 `benchmark/suites.py` — rather than keeping its own lists, so adding a variant or a game
