@@ -11,7 +11,7 @@ cd ~/simplified_gto_solver
 python -m venv .venv && source .venv/bin/activate
 pip install -e '.[dev]'
 
-pytest          # 419 tests, ~40s
+pytest          # 437 tests, ~25s
 ruff check .
 python main.py  # Kuhn demo: exploitability + solved strategies
 
@@ -34,7 +34,7 @@ compare against.
 
 ## Status
 
-Phases 1–5 of 10 complete. Phase 6 (performance engineering) is next.
+Phases 1–6 of 10 complete. Phase 7 (CLI) is next.
 
 | Phase | Work | Status |
 |---|---|---|
@@ -43,8 +43,8 @@ Phases 1–5 of 10 complete. Phase 6 (performance engineering) is next.
 | 3 | Leduc Hold'em — validates the abstraction generalizes | done |
 | 4 | Market microstructure: Glosten–Milgrom + Kyle | done |
 | 5 | Multi-seed benchmarking, confidence bands, convergence plots | done |
-| 6 | Performance engineering — profiling, optimized hot loop, published throughput | next |
-| 7 | CLI (typer) | |
+| 6 | Performance engineering — profiling, optimized hot loop, published throughput | done |
+| 7 | CLI (typer) | next |
 | 8 | Interactive dashboard (Streamlit) | |
 | 9 | Deep CFR — neural regret approximation vs tabular ground truth | |
 | 10 | Architecture writeup and docs polish | |
@@ -280,32 +280,98 @@ ones, unchanged.
 
 ---
 
-## Next up: Phase 6
+## Phase 6 — performance (2026-08-24)
 
-Performance engineering: profile the hot loop, optimize it, and publish before/after
-throughput.
+2–3× on exact traversal with **every per-iteration convergence curve bit-identical**. That
+pairing is the whole point of the phase: the harness from Phase 5 exists so an optimization
+has to prove it changed the clock and nothing else.
 
-The workflow the harness was built for:
+    Game              vanilla  cfr_plus  alternating  dcfr  linear   sampled
+    Kuhn                2.03x     1.98x        1.99x  1.73x  1.79x   0.97-1.03x
+    Leduc               2.78x     2.60x        2.71x      -      -   1.04-1.09x
+    Glosten-Milgrom     3.14x     3.16x        3.26x      -      -   1.05x
 
-```bash
-python scripts/benchmark.py                                   # baseline, on a clean tree
-cp -r results results-baseline
-# ... optimize ...
-python scripts/benchmark.py
-python scripts/benchmark.py --compare results-baseline/kuhn_convergence.json \
-                                     results/kuhn_convergence.json
-```
+    max exploitability delta: 0.000e+00 on every run of every convergence suite
 
-`--compare` exits non-zero if any per-iteration convergence curve moved. That is the check
-that matters: throughput is allowed to change, and the curve is not. Wall-clock curves are
-compared on throughput instead, since those are *supposed* to move.
+### The three changes, in the order profiling found them
+
+`scripts/profile_hotloop.py` prints the ranking and a per-node cost. The per-node figure is
+the one that matters: "40% in regret_matching" means nothing until you know a node is
+visited 567,000 times per 150 Leduc iterations.
+
+1. **Counterfactual reach** was `np.prod(np.delete(reach, player))` — 14% of a Leduc run on
+   its own, spent allocating a fresh array at every decision node to drop one element from a
+   list of three. `delete` preserves order and `prod` multiplies left to right, so a loop is
+   arithmetically identical.
+2. **`payout(player)` was called once per player at every terminal**, and a two-player
+   zero-sum game computes the same quantity both times — Leduc rebuilt both players' chip
+   contributions and re-decided the winner on each call. `GameState.payouts()` asks once,
+   and is optional: the base-class default is correct for any game.
+3. **The tree was re-derived every iteration.** Terminality, payoffs, chance probabilities,
+   whose turn it is, info-set keys, action counts, and which node each action leads to are
+   all fixed, because a `GameState` is immutable. `FullTraversal` resolves the tree once
+   now. On 150 Leduc iterations that removes 1.4M `apply()` calls, 850k payoff computations
+   and 567k info-set-key string builds; the game leaves the profile entirely, and what
+   remains is the regret arithmetic that is the actual work.
+
+### What this says about the two axes
+
+The optimization sped up exact traversal by 2.8× on Leduc and sampling by 9%, so the
+published exact-vs-sampled throughput ratio fell from **211× to 83×** and the exploitability
+gap at 20 s widened from 1.7× to 3.1×. Nothing about either algorithm changed. **A
+wall-clock comparison between two traversals is a statement about an implementation**; the
+per-iteration comparison is the one that is not, and it is unchanged to the last bit.
+
+A precision fix to Phase 5's wording while re-reading it: ~~"exact traversal beats sampling
+at every budget"~~ is true of *vanilla*, the best exact variant, against every sampled one —
+but **MCCFR beats alternating CFR+ from 5 s onward**, and did in the Phase 5 numbers too.
+Which traversal wins depends on which update rule it is carrying.
+
+### Traps
+
+1. *The sampled traversals must not cache the tree.* External sampling exists for trees too
+   large to enumerate, and materializing one removes its reason to exist. Its 1.0× is the
+   boundary being respected, not an optimization that failed.
+2. *The cache is keyed on game object **identity**.* Two `GlostenMilgromGame`s differ only by
+   a constructor argument, so anything looser would solve mu=0.30 and label the answer
+   mu=0.70. Pinned by a test that trains one traversal on two different mu.
+3. *Terminal payoff vectors are handed to the walk by reference on every visit.* Nothing may
+   write through one — it would corrupt the tree permanently and silently, and every later
+   iteration would train on the corruption. Pinned two ways: directly, and by requiring a
+   split run to match a single one.
+4. *A wrong `payouts()` override is the nastiest failure available here.* The solver would
+   converge correctly to the equilibrium of a **different game**, and every convergence test
+   would still pass. So `tests/test_payout_vector.py` walks every terminal of every game and
+   checks `payouts()` against `payout()` directly rather than trusting a symptom to appear.
+
+### Where the time goes now
+
+After the change, a Leduc profile is `_walk_resolved` itself (numpy array ops on 2–3 element
+vectors) and `regret_matching`. The next real win is replacing those tiny numpy arrays with
+Python floats — but `strategy @ action_values` over 33 Glosten–Milgrom quotes would then sum
+in a different order, and the curves would stop being bit-identical. That is a real
+trade-off rather than a free win, and it is left for a phase that wants to make it
+deliberately.
+
+---
+
+## Next up: Phase 7
+
+A real CLI (typer), replacing `main.py`'s fixed Kuhn demo.
 
 Specifics that matter:
-- Measure on a clean tree. The provenance check will say so if you did not, and a comparison
-  across different machines or interpreters is flagged rather than silently reported.
-- Beat 3%, or repeat the measurement (see the noise floor above).
-- Every stochastic result stays at **≥10 seeds with bands**; the published-results test
-  enforces it, and refuses a file produced by `--quick`.
+- `solvers/registry.py` already names every variant and `benchmark/suites.py` every suite,
+  so the CLI should select from those rather than growing its own list of algorithms.
+- Keep `main.py` working, or delete it in the same commit that replaces it. A README that
+  documents a removed entry point is the failure mode this project keeps hitting.
+- Anything that reports a solved strategy should evaluate the **average** strategy through
+  `metrics/evaluation.py`, never a solver's per-iteration return value.
+
+Still open, carried forward:
+- **CFR+ loses to vanilla on both non-Kuhn games** and nobody knows why. The update schedule
+  is ruled out and so is a slow start (see Phase 5). It wants a correctness review of
+  `CFRPlusRegretMatching` against Tammelin 2014, not another benchmark.
+- The next performance step trades bit-identical curves for speed; see Phase 6 above.
 
 ## Conventions
 

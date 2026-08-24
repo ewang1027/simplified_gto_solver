@@ -39,6 +39,19 @@ never on the asset value or trader type.
 - **`Traversal`** owns how one iteration walks the tree. `FullTraversal` is exact;
   `ExternalSamplingMCCFR` samples chance and opponent nodes.
 
+`FullTraversal` resolves the game tree into `_TreeNode`s on first use and walks the resolved
+copy afterwards. Everything it caches — terminality, payoffs, chance probabilities, the
+acting player, info-set keys, action counts, and each action's successor — is fixed by the
+immutability of `GameState`, so this is memoization rather than a second implementation, and
+results are bit-identical. **The sampled traversals deliberately do not do this**: external
+sampling exists to handle trees too large to enumerate, and materializing one would remove
+its reason to exist. A traversal that already visits every node every iteration loses
+nothing by keeping it; one that walks a single path would lose everything.
+
+The cache is keyed on game object *identity*, not equality — two `GlostenMilgromGame`s
+differ only by a constructor argument, and a looser key would solve one and label the answer
+with the other's parameters.
+
 Four algorithms are therefore two rules × two traversals plus a flag, not four forked files.
 Any rule composes with any traversal. Adding a fifth variant means adding one small class.
 
@@ -131,6 +144,12 @@ seconds on this machine completed between 118,797 and 135,051 iterations — a 3
 standard deviation. A throughput difference smaller than that is machine drift, not an
 optimization.
 
+**A wall-clock comparison between two traversals is a statement about an implementation.**
+Phase 6 sped exact traversal up 2.8× and sampling by 9%, and the published exact-vs-sampled
+throughput ratio on Leduc fell from 211× to 83× without either algorithm changing. The
+per-iteration comparison is the one that survives an optimization, which is exactly why
+`compare()` treats the two axes differently.
+
 ## Microstructure: modeling assumptions
 
 Stated plainly because a reader will ask.
@@ -159,6 +178,11 @@ Stated plainly because a reader will ask.
    outcomes (Leduc's deck has two of each rank).
 3. Make `payout(player)` exactly antisymmetric for two-player zero-sum. `exploitability`
    walks every terminal node asserting payouts sum to zero, so violations surface loudly.
+   Optionally override `payouts(num_players)` to return the whole vector in one call — the
+   solver asks for it once per terminal instead of once per player, which is worth roughly
+   10% on Leduc. Get it wrong and the solver will converge correctly to the equilibrium of a
+   *different game* while every convergence test passes, so `tests/test_payout_vector.py`
+   checks the override against `payout` at every terminal node.
 4. Test info-set indistinguishability directly: states differing only in hidden information
    must produce equal keys.
 5. No solver change should be needed. **If you find yourself editing anything under

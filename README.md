@@ -11,8 +11,9 @@ selection and bid-ask spreads.
 
 ## Status
 
-Phases 1–5 of 10 complete: the engine, seven CFR variants, two poker games, the
-market-microstructure centerpiece, and a multi-seed benchmarking harness. See
+Phases 1–6 of 10 complete: the engine, seven CFR variants, two poker games, the
+market-microstructure centerpiece, a multi-seed benchmarking harness, and a 2–3×
+optimization of the hot loop that leaves every convergence curve bit-identical. See
 [Roadmap](#roadmap) for what's next.
 
 ## Market microstructure
@@ -134,26 +135,32 @@ range. That is what the bands are for.
 
 | Budget | Vanilla CFR | CFR+ | CFR+ (alternating) | MCCFR (ext. sampling) | MCCFR + CFR+ rule |
 |---:|---:|---:|---:|---:|---:|
-| 0.5s | 0.20422 | 0.20730 | 0.74290 | 0.34276 | 0.35823 |
-| 1s | 0.13583 | 0.13548 | 0.33170 | 0.21722 | 0.23604 |
-| 2s | 0.07568 | 0.09746 | 0.16099 | 0.14496 | 0.16749 |
-| 5s | 0.04671 | 0.07135 | 0.10888 | 0.07949 | 0.10898 |
-| 10s | 0.03424 | 0.05080 | 0.09102 | 0.05750 | 0.07412 |
-| 20s | 0.02125 | 0.03819 | 0.07532 | 0.03666 | 0.05430 |
+| 0.5s | 0.10559 | 0.12066 | 0.23245 | 0.33359 | 0.34688 |
+| 1s | 0.06886 | 0.08739 | 0.13032 | 0.21475 | 0.23248 |
+| 2s | 0.04326 | 0.07036 | 0.10542 | 0.13910 | 0.16789 |
+| 5s | 0.02599 | 0.04587 | 0.08287 | 0.07342 | 0.10425 |
+| 10s | 0.01758 | 0.03263 | 0.06717 | 0.05287 | 0.07273 |
+| 20s | 0.01159 | 0.02515 | 0.05043 | 0.03604 | 0.05373 |
 
 | Variant | Iterations in the final budget | Iterations/sec | Seeds |
 |---|---:|---:|---:|
-| Vanilla CFR | 616 | 31 | deterministic |
-| CFR+ | 586 | 29 | deterministic |
-| CFR+ (alternating) | 715 | 36 | deterministic |
-| MCCFR (ext. sampling) | 129,938 | 6,497 | 10 |
-| MCCFR + CFR+ rule | 130,689 | 6,534 | 10 |
+| Vanilla CFR | 1,720 | 86 | deterministic |
+| CFR+ | 1,528 | 76 | deterministic |
+| CFR+ (alternating) | 1,976 | 99 | deterministic |
+| MCCFR (ext. sampling) | 141,957 | 7,098 | 10 |
+| MCCFR + CFR+ rule | 138,086 | 6,904 | 10 |
 
-- **Exact traversal beats sampling at every budget**, and not only on the median: every one
-  of the ten MCCFR seeds at 20 s is worse than the single exact run (best sampled 0.02810
-  against exact 0.02125).
-- Sampling completes **211× more iterations per second** and still loses. Iterations are not
-  a currency the two traversals share, which is why this suite is measured in seconds.
+- **Vanilla exact traversal beats every sampled variant at every budget**, and not only
+  on the median: every one of the ten MCCFR seeds at 20 s is worse than the single exact
+  run (best sampled 0.02869 against exact 0.01159). At 20 s the gap is 3.1×.
+- It is *not* true that exact beats sampled variant-for-variant, and the table is the
+  reason to say so precisely: **MCCFR beats alternating CFR+ from 5 s onward.** Which
+  traversal wins depends on which update rule it is carrying.
+- Sampling completes **83× more iterations per second** and still loses. That ratio was
+  211× before the Phase 6 optimization, which is the honest catch: the optimization
+  sped up exact traversal by 2.8× and sampling by 9%, so **a wall-clock comparison
+  between two traversals is a statement about an implementation, not about the
+  algorithms.** The per-iteration comparison below is the one that is not.
 
 ### CFR+ wins on Kuhn and loses on everything else
 
@@ -189,6 +196,42 @@ offered as a general claim about CFR+.
 The microstructure game runs through the same harness as the poker ones. Exact CFR drives
 exploitability to **0.000113** at 3,000 iterations over its 298 info sets, at 183
 iterations/sec.
+
+### Performance
+
+Phase 6 optimized the hot loop. The gate it had to pass is the one the harness was built
+for: **throughput may move, per-iteration convergence curves may not.** They did not — the
+maximum exploitability difference is `0.000e+00` on every run of every convergence suite,
+across 7 algorithms, 13 checkpoints and 20 seeds.
+
+| Game | Vanilla CFR | CFR+ | CFR+ (alternating) | DCFR | Linear CFR | Sampled |
+|---|---:|---:|---:|---:|---:|---:|
+| Kuhn | 2.03× | 1.98× | 1.99× | 1.73× | 1.79× | 0.97–1.03× |
+| Leduc | 2.78× | 2.60× | 2.71× | — | — | 1.04–1.09× |
+| Glosten–Milgrom | 3.14× | 3.16× | 3.26× | — | — | 1.05× |
+
+Three changes, in the order profiling found them (`python scripts/profile_hotloop.py`):
+
+1. **Counterfactual reach** was `np.prod(np.delete(reach, player))` — 14% of a Leduc run
+   spent allocating an array at every decision node to drop one element from three.
+2. **`payout(player)` was called once per player** at every terminal, and a two-player
+   zero-sum game computes the same quantity both times. `GameState.payouts()` asks once.
+   It is optional — the base-class default is correct for any game.
+3. **The tree was re-derived every iteration.** Which nodes are terminal, the payoffs
+   there, the chance probabilities, whose turn it is, the info-set key, the action count,
+   and which node each action leads to are all fixed, because a `GameState` is immutable.
+   `FullTraversal` now resolves the tree once. On 150 Leduc iterations that removes 1.4M
+   `apply()` calls, 850k payoff computations and 567k info-set-key string builds — the
+   game disappears from the profile entirely, leaving the regret arithmetic that is the
+   actual work.
+
+Two things worth reading off that table. The speedup **grows with the game**, 2.0× on Kuhn
+to 3.1× on Glosten–Milgrom, because the more expensive a game's own methods are the more
+there is to stop recomputing. And **sampling barely moves**, which is by design rather than
+by omission: external sampling exists for trees too large to enumerate, so caching one
+would take away its reason to exist. Most of those figures sit at or below the 3.2%
+wall-clock noise floor measured in Phase 5; the largest, Leduc's 1.09×, is the `payouts()`
+change, which does touch the sampled path.
 
 ## Why exploitability, not "does it match −1/18"
 
@@ -372,8 +415,8 @@ vary between runs — but the game value is always −1/18 at equilibrium.
 | 3 | Leduc Hold'em — validates the abstraction generalizes | done |
 | 4 | **Market microstructure: Kyle (1985) and Glosten–Milgrom** — the centerpiece | done |
 | 5 | Multi-seed benchmarking with confidence bands, convergence plots | done |
-| 6 | Performance engineering — profiling, optimized hot loop, published throughput | next |
-| 7 | CLI | |
+| 6 | Performance engineering — profiling, optimized hot loop, published throughput | done |
+| 7 | CLI | next |
 | 8 | Interactive dashboard | |
 | 9 | Deep CFR — neural regret approximation, scored against tabular ground truth | |
 | 10 | Architecture writeup and docs | |
