@@ -134,11 +134,53 @@ gets an iterated best-response fixed-point solver validated against five closed 
    argmax is correct throughout, which is what the gate checks. An earlier version of this
    note claimed the diffuseness was *not* convergence-related at all; that was wrong.
 
+## Phase 5 — benchmarking harness (2026-08-23, in progress)
+
+The harness landed first, ahead of the numbers, because Phase 6 has to measure against it:
+an optimization claim is only worth something if before and after came from the same
+measurement path.
+
+What exists now, all green (`ruff check .`, 375 tests):
+
+- `solvers/registry.py` — the seven named (regret rule x traversal) variants in one place,
+  each carrying a `deterministic` flag. Includes `mccfr_plus`, the CFR+ rule composed with
+  external sampling, which no paper defines and which the design gives away for free.
+- `benchmark/stats.py` — seed envelope vs bootstrap CI, kept apart deliberately. The
+  envelope says how much runs differ; the CI says how well N seeds pin the centre down.
+- `benchmark/runner.py` — `run_convergence` (exploitability vs iterations) and
+  `run_wallclock` (exploitability vs seconds), plus `verify_determinism`.
+- `benchmark/results.py` — JSON with provenance, and `compare()` for Phase 6.
+- `benchmark/{suites,tables,plots}.py` and `scripts/benchmark.py`.
+
+**Three measurement rules are enforced in code, not in comments:**
+
+1. *Evaluating exploitability is never charged to the solver's clock.* Measuring costs 56 ms
+   on Leduc against a 31 ms iteration, so charging it would make whichever run was measured
+   more often look slower — the exact-vs-sampled result would be a measurement artifact.
+   Pinned by a test that runs identical work at 1 and at 4 checkpoints and requires the
+   throughputs to agree.
+2. *Deterministic variants run once, not N times.* `FullTraversal` never reads the rng, so
+   twenty seeds give twenty identical curves and a band of width zero. The flag claiming
+   this is verified by actually running the seeds, in both directions — exact variants must
+   be bit-identical, sampled ones must not be.
+3. *Nothing is capped, reduced or skipped in silence.* Every reduction lands in `notes`,
+   which is serialized with the results and printed by the script.
+
+**Measured while building it:** at n ≤ 20 seeds with 10,000 resamples, the bootstrap
+interval is **bit-identical across bootstrap seeds** — the resample distribution of a median
+over so few points is discrete enough that its tail percentiles land on the same order
+statistics every time. Wobble appears around n = 50 (~13% of interval width). So the
+arbitrary default bootstrap seed is not quietly steering any published interval, which was
+the obvious thing to worry about. Pinned in `tests/test_benchmark_stats.py`.
+
+**Still to do:** run the suites and publish the numbers and charts. Nothing in this section
+claims a benchmark result — only that the machinery to produce one exists.
+
 ---
 
-## Next up: Phase 5
+## Next up: finish Phase 5
 
-Multi-seed benchmarking with confidence bands, and the convergence plots for the README.
+Run the suites, publish the charts, and update the README's tables from them.
 
 Specifics that matter:
 - MCCFR and any future stochastic solver must be reported over **≥10 seeds with confidence

@@ -13,15 +13,21 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-# pytest + linting, for local development and CI.
+# pytest + linting, for local development and CI. matplotlib is included so CI
+# actually exercises the chart code rather than skipping over it; the package
+# itself never imports it outside gto_solver.benchmark.plots.
 dev = [
     "pytest",
     "ruff",
+    "matplotlib",
 ]
-# Reserved for later phases (results plotting/reporting, neural-network function
-# approximation for CFR variants such as Deep CFR). Add extras here when those
-# phases start; no heavy dependencies are pulled in yet.
-# viz = []
+# Charts for benchmark results. Optional: the solver, the metrics and the whole
+# test suite run without it, and only scripts/benchmark.py's plotting needs it.
+viz = [
+    "matplotlib",
+]
+# Reserved for the Deep CFR phase (neural regret approximation); no heavy
+# dependency is pulled in until that phase starts.
 # nn = []
 
 [tool.setuptools.packages.find]
