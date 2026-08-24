@@ -1,64 +1,94 @@
 # Architecture
 
-Why the code is shaped the way it is, and how to extend it. For chronology and status see
-`BUILDLOG.md`; for the Phase 4 modeling work see `phase4-microstructure-design.md`.
+Why the code is shaped the way it is, and how to extend it. For chronology, measured
+results and the traps behind each phase, see `docs/BUILDLOG.md`; for the microstructure
+modeling work see `docs/phase4-microstructure-design.md`.
+
+Two ideas carry the whole project, one metric decides whether any of it is right, and one
+distinction — which axis a comparison is on — turns out to be where every mistake was
+actually made.
 
 ## The two abstractions
 
-Everything rests on two ideas. Get these and the rest follows.
-
 ### 1. `GameState` — an extensive-form game node
 
-`games/base.py`. A game supplies: `is_terminal()`, `is_chance()`, `chance_outcomes()`,
-`current_player()`, `legal_actions()`, `apply()`, `info_set_key()`, `payout(player)`.
-States are immutable — `apply()` returns a new state.
+`games/base.py`. A game supplies `is_terminal()`, `is_chance()`, `chance_outcomes()`,
+`current_player()`, `legal_actions()`, `apply()`, `info_set_key()` and `payout(player)`.
+States are immutable — `apply()` returns a new state — which is what later let the solver
+resolve a tree once and reuse it.
 
-Two design decisions inside this are load-bearing:
+Two decisions inside this are load-bearing:
 
 **Chance is a node in the tree.** Dealing cards, drawing an asset value, drawing a trader
 type — all are chance nodes the solver walks, weighted by outcome probability. The original
 Kuhn script instead enumerated the six deals in its training loop with
 `itertools.permutations`. That works for exactly one game. Leduc has two chance points
 (private deal, then community card) and Glosten–Milgrom draws a value jointly with a trader
-type, so the loop-enumeration approach cannot express either.
+type, so loop enumeration cannot express either.
 
 **Info-set keys define what a player cannot distinguish.** Two states a player cannot tell
-apart *must* return equal keys. This is the property the whole solver depends on, and it is
-worth testing directly for every new game — Leduc keys on card *rank* only (suits are
-strategically irrelevant, and keying on them would double the info-set count and split the
-strategy across duplicates), and the Glosten–Milgrom maker keys only on observed order flow,
-never on the asset value or trader type.
+apart *must* return equal keys. The whole solver depends on this, and it is worth testing
+directly for every new game: Leduc keys on card *rank* only, since suits are strategically
+irrelevant and keying on them would double the info-set count and split the strategy across
+duplicates; the Glosten–Milgrom maker keys only on observed order flow, never on the asset
+value or the trader type.
+
+Two methods are **optional**, with defaults that keep every existing game working:
+
+- `payouts(num_players)` returns the whole payoff vector in one call. The default calls
+  `payout` per player; a two-player zero-sum game computes the same quantity both times, so
+  overriding it halves the work at every terminal node. Get it wrong and the solver
+  converges correctly to the equilibrium of a *different game* while every convergence test
+  passes — hence `tests/test_payout_vector.py`, which checks the override against `payout`
+  at every terminal node of every game.
+- `features()` returns a fixed-length numeric encoding of the info set, or `None`. Tabular
+  CFR needs only `info_set_key`, which says *whether* two states are the same; a function
+  approximator needs to know how they are *related*, which a key cannot express. Returning
+  `None` means the game does not support function approximation, and Deep CFR says so
+  rather than inventing an encoding on the game's behalf.
 
 ### 2. `RegretUpdateRule` × `Traversal` — algorithms by composition
 
 `solvers/base.py`. A CFR variant is one update rule composed with one traversal:
 
-- **`RegretUpdateRule`** owns how cumulative regret becomes a strategy and how accumulators
-  update. Vanilla regret matching, CFR+'s non-negative flooring with linear averaging, and
-  DCFR's discounting differ *only* here.
+- **`RegretUpdateRule`** owns how cumulative regret becomes a strategy and how the
+  accumulators update. Vanilla regret matching, CFR+'s non-negative flooring with linear
+  averaging, and DCFR's discounting differ *only* here.
 - **`Traversal`** owns how one iteration walks the tree. `FullTraversal` is exact;
   `ExternalSamplingMCCFR` samples chance and opponent nodes.
 
-`FullTraversal` resolves the game tree into `_TreeNode`s on first use and walks the resolved
-copy afterwards. Everything it caches — terminality, payoffs, chance probabilities, the
-acting player, info-set keys, action counts, and each action's successor — is fixed by the
-immutability of `GameState`, so this is memoization rather than a second implementation, and
-results are bit-identical. **The sampled traversals deliberately do not do this**: external
-sampling exists to handle trees too large to enumerate, and materializing one would remove
-its reason to exist. A traversal that already visits every node every iteration loses
-nothing by keeping it; one that walks a single path would lose everything.
-
-The cache is keyed on game object *identity*, not equality — two `GlostenMilgromGame`s
-differ only by a constructor argument, and a looser key would solve one and label the answer
-with the other's parameters.
-
-Four algorithms are therefore two rules × two traversals plus a flag, not four forked files.
-Any rule composes with any traversal. Adding a fifth variant means adding one small class.
+Seven of the eight variants in `solvers/registry.py` are combinations of these, not forked
+files — including `mccfr_plus`, the CFR+ rule under external sampling, which neither paper
+defines and which cost nothing to add. Any rule composes with any traversal.
 
 Regret is stored per info set with a **per-info-set action count**. Kuhn has two actions
 everywhere; Leduc has fold/call/raise or call/raise depending on the node; Glosten–Milgrom's
 maker chooses among 33 quotes. A global `num_actions` constant — which the original script
 had — cannot express that.
+
+**`FullTraversal` resolves the tree once.** Terminality, payoffs, chance probabilities, the
+acting player, info-set keys, action counts and each action's successor are all fixed by the
+immutability of `GameState`, so they are computed once and reused. This is memoization, not
+a second implementation, and results are bit-identical. The **sampled traversals
+deliberately do not do it**: external sampling exists for trees too large to enumerate, and
+materializing one would remove its reason to exist. A traversal that already visits every
+node every iteration loses nothing by keeping it; one that walks a single path would lose
+everything. The cache is keyed on game object *identity* — two `GlostenMilgromGame`s differ
+only by a constructor argument, and a looser key would solve one and label the answer with
+the other's parameters.
+
+### Where the two abstractions stop
+
+**Deep CFR does not compose from a rule and a traversal**, and that is a finding rather than
+an oversight. Every tabular variant here differs only in how regret becomes a strategy or
+how a traversal walks the tree. Deep CFR changes neither — it changes *what the regret store
+is*, replacing the table with a network refitted every iteration.
+
+So `solvers/deep_cfr.py` is its own module, `AlgorithmSpec` carries a `make_solver` escape
+hatch and a `composed` flag, and a test asserts `deep_cfr` is the only uncomposed variant —
+so a future one quietly bypassing the design fails rather than passing unnoticed. What is
+still shared is the part that makes the comparison worth anything: the same
+`average_strategy()` surface, so the same metric grades it and the same harness measures it.
 
 ## Exploitability is the correctness metric
 
@@ -66,12 +96,12 @@ had — cannot express that.
 against a strategy profile. It is ≥ 0 everywhere and exactly 0 at a Nash equilibrium.
 
 The alternative — checking that the average game value matches Kuhn's known −1/18 — only
-validates games somebody already solved in closed form. The microstructure games have no
+validates games somebody has already solved in closed form. The microstructure games have no
 such constant, so that approach cannot carry the project.
 
 **The subtle part:** a best responder cannot act differently in states it cannot
 distinguish, so maximization happens **once per information set, not per tree node**. A
-naive per-node `max` silently lets the responder use hidden information and reports
+naive per-node `max` silently lets the responder use hidden information and reports an
 exploitability that is too high. The implementation does two passes — collect every node of
 each info set with its counterfactual reach, then take a single argmax per info set — with
 `value` and `best_action_index` mutually recursive and the latter memoized.
@@ -84,11 +114,41 @@ follows it. Use it, not a solver's per-iteration return value, to evaluate a str
 per-iteration value reflects the current regret-matching strategy, which oscillates, whereas
 the **average** strategy is what converges.
 
+## Three axes, and naming which one you are on
+
+This is the single mistake this project has made most often, in three different disguises
+across three phases. Comparisons here run on one of three axes and they are not
+interchangeable.
+
+**Iterations.** Pure math: a convergence curve indexed by iteration count is what a faithful
+optimization must leave *unchanged*, which is why `compare()` checks it for equality. But an
+"iteration" is not one thing. One exact iteration walks the whole tree; one external-sampling
+iteration is a single sampled path per player; one Deep CFR iteration is thirty sampled
+traversals per player. **Comparing update rules on this axis is fair. Comparing traversals on
+it is a category error.**
+
+**Seconds.** The only currency exact and sampled traversals share, and the axis that answers
+"which should I actually run". But a wall-clock curve is *supposed* to move when the code
+changes, so `compare()` checks it for throughput rather than equality — and it is a statement
+about an implementation, not about an algorithm. Phase 6 sped exact traversal up 2.8× and
+sampling by 9%, and the published Leduc exact-vs-sampled ratio fell from 211× to 83× with
+nothing about either algorithm changing.
+
+**Traversals.** Game-tree walks: the fair axis for comparing two *sampled* methods. Phase 9
+needed it. At equal iterations Deep CFR appeared to beat MCCFR by 2–3×, but one Deep CFR
+iteration does thirty times the sampling, and normalized by traversals MCCFR is 2.1–3.9×
+ahead. The apparent win was entirely the axis.
+
+The rule that falls out, and the reason this section exists: **name the axis before
+comparing, and say why it is the right one for the question.** Every table in the README
+does; the one place a caveat could not fit into a table, it went into the suite's subtitle so
+it travels with the results file and prints on the chart.
+
 ## Measuring: what a benchmark number has to survive
 
 `benchmark/`. Exploitability says whether the solver is right; this says whether a claim
-about it is worth anything. The harness exists because Phase 6 optimizes the hot loop, and
-"1.8x faster" means nothing unless before and after were measured the same way.
+about it is worth anything. The harness was built before Phase 6 optimized the hot loop,
+because "2× faster" means nothing unless before and after were measured the same way.
 
 **Two bands, two questions.** `stats.py` computes both and never lets them be confused:
 
@@ -110,27 +170,23 @@ actually visited.
 plausible-looking wrong answer:
 
 1. **Evaluating exploitability is never charged to the solver's clock.** Measuring costs
-   56 ms on Leduc against a 31 ms iteration. Charge it and whichever configuration was
+   58 ms on Leduc against an 11 ms iteration — five iterations' worth, and the ratio got
+   *worse* with Phase 6, which sped the iteration up and left the measurement alone.
+   Charge it and whichever configuration was
    measured at more checkpoints reports lower throughput for identical work — the
-   exact-vs-sampled comparison would then be an artifact of how often it was observed.
+   exact-vs-sampled comparison would become an artifact of how often it was observed. Note
+   the corollary: extracting a strategy is not charged either, and for Deep CFR that is a
+   network fit, so its throughput is flattered relative to tabular. Compare it on iterations
+   and traversals, never on throughput.
 2. **Deterministic variants are run once.** `FullTraversal` never touches the rng, so every
    seed produces a bit-identical strategy. Twenty seeds would publish a band of width zero
    as though variance had been measured and found small, rather than being absent by
-   construction. The flag asserting this is checked by `verify_determinism()`, in both
+   construction. The flag asserting this is checked by `verify_determinism()` in both
    directions: exact variants must match bit for bit, sampled ones must not.
 3. **Nothing is capped, reduced or skipped in silence.** A reduced seed count, a quick
    profile, a wall-clock checkpoint that had to be overshot — each lands in `notes`, which
-   is serialized with the results and printed by the script. A benchmark that quietly
-   shrinks its own workload reads later as a clean result.
-
-**Iterations and seconds are different axes, on purpose.** A convergence run is indexed by
-iteration count, so its curve is pure math and a faithful optimization must leave it
-*unchanged*. A wall-clock run is indexed by seconds, so its curve is *supposed* to move.
-`compare()` therefore checks the first for equality and the second for throughput; checking
-both the same way would either flag every successful optimization as a regression or let a
-changed algorithm pass as a speedup. Comparing iterations across traversals is the same
-category error: one MCCFR iteration is a single sampled path, one exact iteration is the
-whole tree.
+   is serialized with the results, printed by the CLI, and rendered by the dashboard. A
+   benchmark that quietly shrinks its own workload reads later as a clean result.
 
 Results carry provenance — interpreter, numpy, machine, commit, and whether the tree was
 dirty — because a timing number without the machine it ran on is not a measurement, and a
@@ -140,15 +196,10 @@ outputs there as it runs, and counting them meant every suite after the first re
 dirtied by the run in progress.
 
 **Know the noise floor before claiming a speedup.** Ten seeds each training for exactly 20
-seconds on this machine completed between 118,797 and 135,051 iterations — a 3.2% relative
-standard deviation. A throughput difference smaller than that is machine drift, not an
-optimization.
-
-**A wall-clock comparison between two traversals is a statement about an implementation.**
-Phase 6 sped exact traversal up 2.8× and sampling by 9%, and the published exact-vs-sampled
-throughput ratio on Leduc fell from 211× to 83× without either algorithm changing. The
-per-iteration comparison is the one that survives an optimization, which is exactly why
-`compare()` treats the two axes differently.
+seconds on this machine completed between 129,913 and 143,891 iterations — a 3.1% relative
+standard deviation. A throughput difference smaller than that is machine drift.
+`scripts/audit_doc_numbers.py` re-measures this and the other machine-specific numbers in
+these documents, because two of them had already gone stale by Phase 10.
 
 ## Microstructure: modeling assumptions
 
@@ -160,7 +211,7 @@ Stated plainly because a reader will ask.
 - The CFR market maker is a **profit maximizer**, not Glosten–Milgrom's **competitive**
   zero-profit maker. Both benchmarks are computed and reported; neither is presented as the
   other. The strategic maker quotes strictly wider.
-- Value, quote, and reservation grids are discretized to keep the action set finite.
+- Value, quote and reservation grids are discretized to keep the action set finite.
 - The uninformed trader is mechanical, so it is modeled as a chance node rather than a
   player — and that chance node sits *after* the quote, which keeps the reservation out of
   the root and the tree small.
@@ -172,20 +223,18 @@ Stated plainly because a reader will ask.
 
 ### Add a game
 
-1. Implement `GameState` and `Game` in `src/gto_solver/games/`. Use `leduc.py` as the
-   reference — it is the non-trivial one.
-2. Make chance a node. Get the outcome probabilities right, especially with duplicate
+1. Implement `GameState` and `Game` in `games/`. Use `leduc.py` as the reference — it is the
+   non-trivial one.
+2. Make chance a node, and get the outcome probabilities right, especially with duplicate
    outcomes (Leduc's deck has two of each rank).
 3. Make `payout(player)` exactly antisymmetric for two-player zero-sum. `exploitability`
    walks every terminal node asserting payouts sum to zero, so violations surface loudly.
-   Optionally override `payouts(num_players)` to return the whole vector in one call — the
-   solver asks for it once per terminal instead of once per player, which is worth roughly
-   10% on Leduc. Get it wrong and the solver will converge correctly to the equilibrium of a
-   *different game* while every convergence test passes, so `tests/test_payout_vector.py`
-   checks the override against `payout` at every terminal node.
+   Optionally override `payouts()` — see above for the hazard.
 4. Test info-set indistinguishability directly: states differing only in hidden information
    must produce equal keys.
-5. No solver change should be needed. **If you find yourself editing anything under
+5. Register it in `games/registry.py`, with the parameters it accepts. The CLI refuses a
+   parameter a game does not take rather than ignoring it.
+6. No solver change should be needed. **If you find yourself editing anything under
    `solvers/` or `metrics/` to make a game work, that is a finding about the abstraction —
    investigate it rather than working around it.** Leduc needed zero such changes, which is
    the evidence the interface is real.
@@ -193,70 +242,76 @@ Stated plainly because a reader will ask.
 ### Add an algorithm variant
 
 Add a `RegretUpdateRule` to `solvers/regret_rules.py` or a `Traversal` to
-`solvers/traversal.py`, then register the combination in `solvers/registry.py` so the
-benchmark, and anything else that names a variant in a string, can find it. Do not fork the
-engine. New traversals must take all randomness from the passed-in `rng` so
+`solvers/traversal.py`, then register the combination in `solvers/registry.py`. Do not fork
+the engine. New traversals must take all randomness from the passed-in `rng` so
 `CFRSolver(..., seed=)` stays reproducible.
 
-Set `deterministic` on the registry entry honestly: it decides whether the benchmark runs
-one seed or twenty, and it is checked by running the seeds, so a wrong value fails a test
-rather than silently publishing a stochastic variant as a single run.
+Set `deterministic` honestly: it decides whether the benchmark runs one seed or twenty, and
+it is checked by actually running the seeds, so a wrong value fails a test rather than
+silently publishing a stochastic variant as a single run.
 
-Validate with exploitability trending to zero — and report what you measure. Two variants
-here (DCFR, alternating updates) do *not* beat the baseline on small games, and that is
-recorded rather than tuned away.
+If the variant genuinely does not fit rule × traversal, use `make_solver` and expect to
+justify it — that escape hatch has exactly one user, and a test says so.
+
+Validate with exploitability trending to zero, and report what you measure. Several variants
+here (DCFR, alternating updates, Deep CFR) do *not* beat the baseline, and that is recorded
+rather than tuned away.
 
 ### Add a benchmark
 
-Analytical or brute-force benchmarks live in `src/gto_solver/analysis/`. The rule that makes
-them worth anything: **a benchmark must share no code with the solver it checks.** The
-Glosten–Milgrom benchmark is an independent exhaustive grid search, which is why the solver
-matching it is evidence rather than a tautology.
+Analytical or brute-force benchmarks live in `analysis/`. The rule that makes them worth
+anything: **a benchmark must share no code with the solver it checks.** The Glosten–Milgrom
+benchmark is an independent exhaustive grid search, which is why the solver matching it is
+evidence rather than a tautology.
 
-*Performance* benchmarks are different work and live in `src/gto_solver/benchmark/`. Add a
-`Suite` to `benchmark/suites.py` — a game, a list of algorithm names, and the checkpoints to
-measure at — and `scripts/benchmark.py` picks it up. Anything stochastic gets at least ten
-seeds; a suite that breaks that rule fails a test. Do not measure timings from a script of
-your own: everything published goes through `benchmark/runner.py` so a later phase can
-compare against it.
+*Performance* benchmarks are different work. Add a `Suite` to `benchmark/suites.py` — a game,
+a list of algorithm names, and the checkpoints to measure at — and `gto benchmark` picks it
+up. Anything stochastic gets at least ten seeds; a suite that breaks that rule fails a test.
+Do not measure timings from a script of your own: everything published goes through
+`benchmark/runner.py` so a later phase can compare against it.
 
 ## Layout
 
 ```
 src/gto_solver/
-├── games/          base.py, kuhn.py, leduc.py, glosten_milgrom.py
-├── solvers/        base.py, regret_rules.py, traversal.py, registry.py
+├── games/          base.py, kuhn.py, leduc.py, glosten_milgrom.py, registry.py
+├── solvers/        base.py, regret_rules.py, traversal.py, registry.py, deep_cfr.py
+├── nn/             mlp.py — a small network in numpy, gradient-checked
 ├── analysis/       microstructure.py (GM benchmarks), kyle.py (fixed-point solver)
 ├── metrics/        exploitability.py, evaluation.py
 ├── benchmark/      stats.py, runner.py, results.py, suites.py, tables.py,
 │                   reporting.py, plots.py
 ├── cli.py          the `gto` command line
 └── dashboard.py    the Streamlit app (optional `dashboard` extra)
-tests/              one file per module, plus test_microstructure_gate.py
+tests/              one file per module, plus the cross-cutting ones below
 docs/               BUILDLOG.md, ARCHITECTURE.md, phase4-microstructure-design.md
 results/            benchmark results as JSON, with provenance
 scripts/            verify_phase4.py (regenerates the design doc's numbers),
                     profile_hotloop.py (where the training time goes)
 ```
 
-`dashboard.py` follows the same rule one level further: a live solve goes through
-`benchmark/runner.py` and produces the same `ConvergenceRun` a benchmark does, which is then
-drawn by the same `benchmark/plots.py` figure the README publishes. A dashboard that drew
-its own lookalike chart from its own loop would eventually disagree with the documents, and
-the disagreement would be invisible. `plots.py` therefore exposes `figure_*` builders as
-well as the `plot_*` functions that save them.
+**Everything with a user interface reads the registries rather than keeping its own lists.**
+`cli.py` selects from `games/registry.py`, `solvers/registry.py` and `benchmark/suites.py`,
+so adding a variant or a game makes it appear in the CLI with no change there, and
+`gto algorithms` cannot drift out of date. `dashboard.py` goes one step further: a live solve
+goes through `benchmark/runner.py` and produces the same `ConvergenceRun` a benchmark does,
+drawn by the same `benchmark/plots.py` figure the README publishes — a dashboard drawing its
+own lookalike would eventually disagree with the documents, invisibly. Running a suite lives
+in `benchmark/reporting.py` rather than in either, because it was duplicated in a script
+once and the half that drifts first is the notes.
 
-`cli.py` selects from the registries — `games/registry.py`, `solvers/registry.py`,
-`benchmark/suites.py` — rather than keeping its own lists, so adding a variant or a game
-makes it appear in the CLI with no change there, and `gto algorithms` cannot drift out of
-date. Running a suite lives in `benchmark/reporting.py` rather than in the CLI, because it
-was duplicated in a script before and the half that drifts first is the notes — the half
-whose whole job is to stop a reduced run from reading like a complete one.
+**Optional dependencies stay optional.** `benchmark/plots.py` needs matplotlib (`viz`) and
+`dashboard.py` needs streamlit (`dashboard`); neither is imported from a package `__init__`,
+so importing `gto_solver` or running the test suite requires neither. Deep CFR needs no
+extra at all — its network is `nn/mlp.py`.
 
-`benchmark/plots.py` is the one module that needs an optional dependency (matplotlib, via
-the `viz` extra). It is deliberately not imported from `benchmark/__init__.py`, so importing
-the package — or running the tests — never requires it.
+Three test files are cross-cutting rather than per-module:
 
-`tests/test_microstructure_gate.py` is the cross-cutting one: it checks the solver, the
-game, and the independent benchmark all agree. That is the test the microstructure phase
-exists to pass.
+- `tests/test_microstructure_gate.py` checks the solver, the game and the independent
+  benchmark all agree. It is the test the microstructure phase exists to pass.
+- `tests/test_published_results.py` checks the committed `results/*.json` the way anything
+  published gets checked — enough seeds, a clean tree, and not accidentally a `--quick` run.
+- `tests/test_docs.py` checks these documents against the repository: every path they name
+  exists, every command they tell you to run is real, and every benchmark table regenerates
+  from the results file it came from. The prose is left to a reader; the checkable parts are
+  checked.

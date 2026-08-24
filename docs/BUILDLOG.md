@@ -11,7 +11,7 @@ cd ~/simplified_gto_solver
 python -m venv .venv && source .venv/bin/activate
 pip install -e '.[dev]'
 
-pytest          # 503 tests, ~50s
+pytest          # 523 tests, ~52s
 ruff check .
 gto solve       # Kuhn demo: exploitability + solved strategies
 gto --help      # solve / algorithms / games / benchmark / microstructure
@@ -40,7 +40,7 @@ compare against.
 
 ## Status
 
-Phases 1–9 of 10 complete. Phase 10 (architecture writeup and docs polish) is next.
+All 10 phases complete.
 
 | Phase | Work | Status |
 |---|---|---|
@@ -53,7 +53,7 @@ Phases 1–9 of 10 complete. Phase 10 (architecture writeup and docs polish) is 
 | 7 | CLI (typer) | done |
 | 8 | Interactive dashboard (Streamlit) | done |
 | 9 | Deep CFR — neural regret approximation vs tabular ground truth | done |
-| 10 | Architecture writeup and docs polish | next |
+| 10 | Architecture writeup and docs polish | done |
 
 Stretch, unscheduled: NFSP (Neural Fictitious Self-Play).
 
@@ -556,29 +556,104 @@ samples per info set instead of counting visits to each separately.
 
 ---
 
-## Next up: Phase 10
+## Phase 10 — the documents (2026-08-24)
 
-Architecture writeup and docs polish — the last scheduled phase.
+`ARCHITECTURE.md` had been appended to four times and read like it: it still said "four
+algorithms are two rules by two traversals" when there were eight variants and one of them
+was not a composition, still listed a `GameState` interface missing two methods, and still
+told you to run a script deleted three phases earlier. It was rewritten as one document
+rather than a fifth append.
 
-Specifics that matter:
-- `ARCHITECTURE.md` predates the benchmark harness, the CLI, the dashboard and Deep CFR.
-  It has been extended four times; it wants a read-through as one document rather than a
-  fifth append.
-- The recurring lesson deserves stating once, properly, in one place: **iterations,
-  seconds and traversals are three different axes, and every cross-algorithm comparison in
-  this project has had to name which one it is on.** It has been rediscovered in Phases 5,
-  6 and 9.
-- Check every number in every document against `results/*.json` and the code, the way the
-  README tables are already checked. Phase 5 and Phase 9 both caught a wrong claim that
-  way, and both times the draft was the thing that was wrong.
+### The recurring lesson, stated once
 
-Still open, carried forward:
-- **CFR+ loses to vanilla on both non-Kuhn games** and nobody knows why. The update
-  schedule is ruled out and so is a slow start (Phase 5). It wants a correctness review of
-  `CFRPlusRegretMatching` against Tammelin 2014, not another benchmark.
-- The next performance step trades bit-identical curves for speed; see Phase 6.
-- Deep CFR is only wired up for the two poker games. Glosten–Milgrom would need a
-  `features()` encoding of its 33-quote action space to join them.
+The new **"Three axes"** section is the point of the phase. Iterations, seconds and
+traversals are three different axes, and this project made the same mistake on each of them
+in a different disguise:
+
+- **Phase 5** — exact and sampled *iterations* are not comparable: one walks the whole tree,
+  one is a single sampled path.
+- **Phase 6** — a *wall-clock* comparison between traversals is a statement about an
+  implementation. Optimizing exact traversal moved the published Leduc ratio from 211× to
+  83× with neither algorithm changing.
+- **Phase 9** — Deep CFR appeared to beat MCCFR by 2–3× at equal iterations, but one Deep
+  CFR iteration does thirty times the sampling. Normalized by *traversals*, MCCFR is 2.1–3.9×
+  ahead.
+
+Three phases, three rediscoveries. The rule now has a home: name the axis before comparing,
+and say why it is the right one for the question.
+
+### The documents are checked mechanically now
+
+`tests/test_docs.py` turns this project's most persistent failure — documents that were true
+when written — into a test failure. Every path a document names must exist; every `gto`
+command it tells you to run must be real; every README benchmark row must regenerate from
+the results file it came from; and the current documents must not point at removed entry
+points. The BUILDLOG is checked too, but against a small named allowlist, because a
+chronological record legitimately mentions things later phases deleted — allowing them *by
+name* rather than exempting the document means a genuinely new stale reference still fails.
+
+It found `scripts/benchmark.py` in `ARCHITECTURE.md`'s "Add a benchmark" section on the
+first run: three phases after that file was deleted, the document still told a reader to
+use it.
+
+### Two numbers this project had invalidated itself
+
+`scripts/audit_doc_numbers.py` re-measures the machine-specific claims that no test can
+check without running something. It found two stale on its first run, and both had been
+broken by **Phase 6's own optimization**:
+
+- *"Measuring costs 56 ms on Leduc against a 31 ms iteration."* The iteration is now 11 ms.
+  Measurement did not get faster, so the ratio moved from about two iterations to five —
+  which makes the rule it justifies *more* important, not less, and nobody noticed either
+  way.
+- *"118,797 to 135,051 iterations, 3.2% relative sd."* Superseded by the Phase 6
+  re-measurement: 129,913–143,891 and 3.1%. The conclusion held; the numbers did not.
+
+Nothing failed when Phase 6 invalidated them, because nothing checked. That is the whole
+argument for the script existing. It prints rather than asserts: a timing that drifts 20% on
+a different machine is not a defect, and a test that failed on it would be turned off within
+a week.
+
+### Where the project ended up
+
+Eight CFR variants across three games, an exploitability metric that needs no published
+answer to check against, a benchmarking harness that reports seeds and bands and refuses to
+hide what it skipped, a 2–3× optimization that left every convergence curve bit-identical, a
+CLI, a dashboard, and Deep CFR with the network written from scratch — all on numpy, with
+matplotlib and streamlit optional.
+
+The results worth remembering are mostly negative, and they are the ones that took the most
+work to trust: **DCFR loses to vanilla** on small games at its published defaults; **CFR+
+wins every Kuhn checkpoint and loses on both other games**, with the update schedule and a
+slow start both ruled out and no explanation found; **Deep CFR loses to both tabular CFR and
+MCCFR** on Kuhn once the axis is read correctly; and **exact traversal beats sampling** at
+every Leduc budget, on every one of ten seeds. None of them were tuned away.
+
+---
+
+## What is left
+
+The ten scheduled phases are done. What remains is open work rather than a plan, in rough
+order of how much it would teach:
+
+- **CFR+ loses to vanilla on both non-Kuhn games and nobody knows why.** It wins at all 13
+  Kuhn checkpoints and trails on Leduc and Glosten–Milgrom, crossing over between 47 and 103
+  iterations on one and between 23 and 51 on the other. Alternating updates are worse still,
+  and running Leduc out to 5,000 iterations rules out a slow start. This wants a line-by-line
+  review of `CFRPlusRegretMatching` against Tammelin 2014, not another benchmark.
+- **The next performance step trades bit-identical curves for speed.** Replacing the tiny
+  numpy arrays in the walk with Python floats would help, but `strategy @ action_values` over
+  33 Glosten–Milgrom quotes would then sum in a different order and the curves would stop
+  matching to the last bit. A real trade-off, worth making deliberately or not at all.
+- **Deep CFR is wired up only for the two poker games.** Glosten–Milgrom needs a `features()`
+  encoding of its 33-quote action space to join them.
+- **Multi-round Glosten–Milgrom** is where the informed trader becomes genuinely strategic,
+  since trading reveals information that moves later quotes. The single-round game has a
+  dominant-strategy trader, which is why it is an optimization the brute-force benchmark can
+  check rather than a game. Tree size is `9*99^R + 18*66^R` terminals, so it gets expensive
+  fast.
+- **NFSP** (Neural Fictitious Self-Play) was always the unscheduled stretch, and now has an
+  MLP and a scoring harness waiting for it.
 
 ## Conventions
 

@@ -11,11 +11,18 @@ selection and bid-ask spreads.
 
 ## Status
 
-Phases 1–9 of 10 complete: the engine, eight CFR variants, two poker games, the
-market-microstructure centerpiece, a multi-seed benchmarking harness, a 2–3× optimization
-of the hot loop that leaves every convergence curve bit-identical, the `gto` CLI, an
-interactive dashboard, and Deep CFR with the network written from scratch in numpy. See
-[Roadmap](#roadmap) for what's next.
+**All 10 phases complete.** Eight CFR variants across three games, an exploitability
+metric that needs no published answer to check against, a benchmarking harness that reports
+seeds and bands, a 2–3× optimization that left every convergence curve bit-identical, a CLI,
+a dashboard, and Deep CFR with the network written from scratch. Everything runs on numpy;
+matplotlib and streamlit are optional.
+
+The results worth remembering are mostly negative, and they took the most work to trust:
+**DCFR loses to vanilla** at its published defaults on small games; **CFR+ wins every Kuhn
+checkpoint and loses on both other games**, unexplained; **Deep CFR loses to both tabular CFR
+and MCCFR** once the axis is read correctly; and **exact traversal beats sampling** at every
+Leduc budget, on every one of ten seeds. None were tuned away. See
+[`docs/BUILDLOG.md`](docs/BUILDLOG.md) for how each was established and what is still open.
 
 ## Market microstructure
 
@@ -374,7 +381,7 @@ pip install -e '.[dev]'
 
 gto --help        # the CLI, installed with the package
 gto solve         # train on Kuhn poker, report exploitability + strategies
-pytest            # correctness suite (503 tests, ~50s)
+pytest            # correctness suite (523 tests, ~52s)
 ruff check .
 ```
 
@@ -415,7 +422,7 @@ move, per-iteration convergence curves may not.
 
 | Document | What it covers |
 |---|---|
-| [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | Why the code is shaped this way, and how to add a game, an algorithm, or a benchmark |
+| [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | Why the code is shaped this way, where its abstractions stop, the three axes a comparison can be on, and how to add a game, an algorithm or a benchmark |
 | [`docs/BUILDLOG.md`](docs/BUILDLOG.md) | Phase-by-phase progress log, findings, and the traps worth knowing before touching a phase |
 | [`docs/phase4-microstructure-design.md`](docs/phase4-microstructure-design.md) | The microstructure modeling work, including the formulations that failed and why |
 
@@ -481,7 +488,7 @@ vary between runs — but the game value is always −1/18 at equilibrium.
 | 7 | CLI (`gto solve` / `benchmark` / `microstructure`) | done |
 | 8 | Interactive dashboard (`gto dashboard`) | done |
 | 9 | Deep CFR — neural regret approximation, scored against tabular ground truth | done |
-| 10 | Architecture writeup and docs | next |
+| 10 | Architecture writeup and docs | done |
 
 Phase 4 was the point of the project, and its results are above. The design was worked out
 and checked numerically *before* any game code was written, which was worth it — two of the
