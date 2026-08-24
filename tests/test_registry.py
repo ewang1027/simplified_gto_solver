@@ -21,18 +21,22 @@ from gto_solver.solvers.registry import (
 )
 
 ALL_NAMES = sorted(ALGORITHMS)
+# Deep CFR retrains a network every iteration, so the 150-iteration determinism sweep
+# below would cost tens of seconds for it alone. It gets its own cheaper check in
+# tests/test_deep_cfr.py rather than slowing every run of this file.
+COMPOSED_NAMES = sorted(name for name, spec in ALGORITHMS.items() if spec.composed)
 
 
 @pytest.mark.parametrize("name", ALL_NAMES)
 def test_every_spec_builds_and_trains(name):
     solver = get_algorithm(name).build(KuhnGame(), seed=0)
-    solver.train(20)
+    solver.train(2 if not get_algorithm(name).composed else 20)
     assert len(solver.store) == 12
     for key, probs in solver.average_strategy().items():
         assert probs.sum() == pytest.approx(1.0), key
 
 
-@pytest.mark.parametrize("name", ALL_NAMES)
+@pytest.mark.parametrize("name", COMPOSED_NAMES)
 def test_determinism_claim_is_true(name):
     """The claim, checked by running it -- in whichever direction it was made."""
     report = verify_determinism(KuhnGame, get_algorithm(name), iterations=150, seeds=(0, 1, 7))
@@ -41,6 +45,34 @@ def test_determinism_claim_is_true(name):
         f"{report.seeds} produced identical strategies = {report.observed_identical} "
         f"(differing info sets: {report.differing_info_sets})"
     )
+
+
+def test_a_spec_needs_exactly_one_way_to_build_itself():
+    """Either a rule and a traversal, or a make_solver -- never both, and never
+    neither. Both would leave it ambiguous which one `build` honours.
+    """
+    from gto_solver.solvers.registry import AlgorithmSpec
+
+    with pytest.raises(ValueError, match="either a rule and a traversal"):
+        AlgorithmSpec(name="x", label="x", description="", deterministic=True)
+    with pytest.raises(ValueError, match="not both"):
+        AlgorithmSpec(
+            name="x",
+            label="x",
+            description="",
+            deterministic=True,
+            make_rule=lambda: None,
+            make_traversal=lambda: None,
+            make_solver=lambda game, seed: None,
+        )
+
+
+def test_only_deep_cfr_is_uncomposed():
+    """The two abstractions carry every tabular variant; this records the one place
+    they do not reach, so a future variant quietly bypassing them is visible.
+    """
+    uncomposed = {name for name, spec in ALGORITHMS.items() if not spec.composed}
+    assert uncomposed == {"deep_cfr"}
 
 
 def test_exact_variants_are_the_deterministic_ones():

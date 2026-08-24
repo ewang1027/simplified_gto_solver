@@ -33,25 +33,57 @@ from gto_solver.solvers.regret_rules import (
 from gto_solver.solvers.traversal import ExternalSamplingMCCFR, FullTraversal
 
 
+def _deep_cfr(game: Game, seed: int):
+    """Imported lazily so `solvers.registry` does not drag in the nn package for the
+    six variants that have nothing to do with it.
+    """
+    from gto_solver.solvers.deep_cfr import DeepCFRSolver
+
+    return DeepCFRSolver(game, seed=seed)
+
+
 @dataclass(frozen=True)
 class AlgorithmSpec:
-    """One named CFR variant: a regret rule, a traversal, and how to report it.
+    """One named CFR variant: how to build it, and how to report it.
 
     `label` is what appears in a plot legend or a results table; `name` is the
     lookup key and the string that ends up in serialized results.
+
+    Most variants are a regret rule composed with a traversal, which is the design
+    this package is built around. `make_solver` is the escape hatch for one that is
+    not: Deep CFR replaces the regret *store* with a fitted network, which no pairing
+    of a rule and a traversal expresses. `composed` records which kind a spec is, so
+    callers can tell "another combination" from "a different sort of thing" — the
+    tests use it to keep an expensive variant out of the cheap parametrized sweeps.
     """
 
     name: str
     label: str
     description: str
-    make_rule: Callable[[], RegretUpdateRule]
-    make_traversal: Callable[[], Traversal]
     deterministic: bool
+    make_rule: Callable[[], RegretUpdateRule] | None = None
+    make_traversal: Callable[[], Traversal] | None = None
+    make_solver: Callable[[Game, int], object] | None = None
 
-    def build(self, game: Game, seed: int = 0) -> CFRSolver:
+    def __post_init__(self) -> None:
+        composed = self.make_rule is not None and self.make_traversal is not None
+        if composed == (self.make_solver is not None):
+            raise ValueError(
+                f"{self.name!r} needs either a rule and a traversal, or a make_solver, "
+                f"and not both"
+            )
+
+    @property
+    def composed(self) -> bool:
+        """True when this variant is a regret rule composed with a traversal."""
+        return self.make_solver is None
+
+    def build(self, game: Game, seed: int = 0):
         """A fresh solver for `game`. Fresh rule and traversal objects too, since a
         rule may carry per-run state in future variants.
         """
+        if self.make_solver is not None:
+            return self.make_solver(game, seed)
         return CFRSolver(game, self.make_rule(), self.make_traversal(), seed=seed)
 
 
@@ -105,6 +137,18 @@ ALGORITHMS: dict[str, AlgorithmSpec] = {
             make_rule=VanillaRegretMatching,
             make_traversal=ExternalSamplingMCCFR,
             deterministic=False,
+        ),
+        AlgorithmSpec(
+            name="deep_cfr",
+            label="Deep CFR",
+            description=(
+                "Counterfactual regret with a learned value function (Brown et al. 2019). "
+                "The only variant here that is not a regret rule composed with a traversal: "
+                "it replaces the regret table with a network refitted every iteration, and "
+                "needs the game to implement GameState.features()."
+            ),
+            deterministic=False,
+            make_solver=_deep_cfr,
         ),
         AlgorithmSpec(
             name="mccfr_plus",

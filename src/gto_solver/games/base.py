@@ -1,7 +1,10 @@
 """Abstract extensive-form game interface used by every solver in this package."""
 
 from abc import ABC, abstractmethod
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:  # only for the annotation on features(); no runtime import
+    import numpy as np
 
 # Sentinel returned by current_player() at a chance node.
 CHANCE = -1
@@ -45,6 +48,23 @@ class GameState(ABC):
     @abstractmethod
     def payout(self, player: int) -> float:
         """Terminal payoff for `player`."""
+
+    def features(self) -> "np.ndarray | None":
+        """A fixed-length numeric encoding of this info set, or None.
+
+        Optional, and None by default. Tabular CFR needs only `info_set_key`, which
+        says *whether* two states are the same; a function approximator needs to know
+        how they are *related*, which a key cannot express -- one-hot encoding the key
+        would give a network nothing to generalize over and reduce Deep CFR to a
+        slower tabular solver.
+
+        Returning None means this game does not support function approximation, and
+        `DeepCFRSolver` says so rather than inventing an encoding on the game's behalf.
+        Every state sharing an info-set key must return equal features; the tests
+        check that directly, because a featurization that leaks hidden information
+        would train a network on knowledge the player does not have.
+        """
+        return None
 
     def payouts(self, num_players: int) -> list[float]:
         """Terminal payoff for every player, as one call.

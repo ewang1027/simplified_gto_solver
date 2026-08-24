@@ -119,6 +119,22 @@ SUITES: dict[str, Suite] = {
             spread_algorithm=None,
         ),
         Suite(
+            name="kuhn_deep_cfr",
+            title="Deep CFR against tabular CFR on Kuhn poker",
+            subtitle=(
+                "Scored by exploitability against a game that is solved exactly, which is "
+                "the whole point: a neural approximation can be graded against a known "
+                "answer here rather than by a training loss that means nothing on its own."
+            ),
+            kind="convergence",
+            make_game=KuhnGame,
+            game_label="kuhn_poker",
+            algorithms=("vanilla", "mccfr", "deep_cfr"),
+            checkpoints=log_checkpoints(5, 200, per_decade=3),
+            seeds=tuple(range(10)),
+            spread_algorithm="deep_cfr",
+        ),
+        Suite(
             name="leduc_convergence",
             title="Update rules on Leduc Hold'em, by iteration",
             subtitle=(

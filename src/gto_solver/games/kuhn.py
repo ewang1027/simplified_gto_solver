@@ -8,6 +8,8 @@ the first decision state.
 from itertools import permutations
 from typing import Any
 
+import numpy as np
+
 from gto_solver.games.base import CHANCE, Game, GameState
 
 CARDS = ("J", "Q", "K")  # index order is also rank order, J < Q < K
@@ -65,6 +67,26 @@ class KuhnState(GameState):
             return card
         action_str = "".join("b" if a == BET else "c" for a in self.history)
         return f"{card}|{action_str}"
+
+    # Card (3) + three action slots, each none/pass/bet (9). Three slots because the
+    # longest history a player acts on is (PASS, BET); the spare keeps the encoding
+    # fixed-length without special-casing.
+    FEATURE_SIZE = 3 + 3 * 3
+
+    def features(self) -> np.ndarray:
+        """Card and betting history, one-hot. Only the acting player's own card
+        appears -- putting the opponent's in would hand the network the hidden
+        information the whole game is about.
+        """
+        encoding = np.zeros(self.FEATURE_SIZE, dtype=np.float64)
+        encoding[self.cards[self.current_player()]] = 1.0
+        for slot in range(3):
+            offset = 3 + slot * 3
+            if slot < len(self.history):
+                encoding[offset + 1 + self.history[slot]] = 1.0
+            else:
+                encoding[offset] = 1.0
+        return encoding
 
     def _p0_payout(self) -> float:
         h = self.history

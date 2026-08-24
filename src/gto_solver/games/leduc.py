@@ -11,6 +11,8 @@ with duplicate-strategy entries for suit-swapped hands.
 from itertools import permutations
 from typing import Any
 
+import numpy as np
+
 from gto_solver.games.base import CHANCE, Game, GameState
 
 RANKS = ("J", "Q", "K")  # index order is also rank order, J < Q < K
@@ -154,6 +156,32 @@ class LeducState(GameState):
         board_rank = RANKS[RANK_OF[self.board]]
         r2 = _history_str(self.round2)
         return f"{rank}{board_rank}|{r1}|{r2}"
+
+    # Private rank (3) + board rank, none included (4) + two rounds of four action
+    # slots, each none/fold/call/raise (2 * 4 * 4). Four slots covers the longest
+    # legal round: a call and two raises cannot exceed it with MAX_RAISES = 2.
+    _HISTORY_SLOTS = 4
+    FEATURE_SIZE = 3 + 4 + 2 * _HISTORY_SLOTS * 4
+
+    def features(self) -> np.ndarray:
+        """Own rank, the board, and both betting histories, all one-hot.
+
+        Rank rather than card, matching `info_set_key`: suits are strategically
+        irrelevant here, and encoding them would ask the network to learn that two
+        inputs mean the same thing.
+        """
+        encoding = np.zeros(self.FEATURE_SIZE, dtype=np.float64)
+        encoding[RANK_OF[self.private[self.current_player()]]] = 1.0
+        encoding[3 + (0 if self.board is None else 1 + RANK_OF[self.board])] = 1.0
+        for round_index, history in enumerate((self.round1, self.round2)):
+            base = 7 + round_index * self._HISTORY_SLOTS * 4
+            for slot in range(self._HISTORY_SLOTS):
+                offset = base + slot * 4
+                if slot < len(history):
+                    encoding[offset + 1 + history[slot]] = 1.0
+                else:
+                    encoding[offset] = 1.0
+        return encoding
 
     def _p0_payout(self) -> float:
         r1_p0, r1_p1 = _round_contributions(self.round1, ROUND1_BET)
