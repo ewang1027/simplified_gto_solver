@@ -633,27 +633,88 @@ every Leduc budget, on every one of ten seeds. None of them were tuned away.
 
 ## What is left
 
-The ten scheduled phases are done. What remains is open work rather than a plan, in rough
-order of how much it would teach:
+The ten scheduled phases are done, so this is open work rather than a plan. Ranked by how
+much it would teach, with the reasoning kept so it does not get re-litigated from scratch.
 
-- **CFR+ loses to vanilla on both non-Kuhn games and nobody knows why.** It wins at all 13
-  Kuhn checkpoints and trails on Leduc and Glosten–Milgrom, crossing over between 47 and 103
-  iterations on one and between 23 and 51 on the other. Alternating updates are worse still,
-  and running Leduc out to 5,000 iterations rules out a slow start. This wants a line-by-line
-  review of `CFRPlusRegretMatching` against Tammelin 2014, not another benchmark.
-- **The next performance step trades bit-identical curves for speed.** Replacing the tiny
-  numpy arrays in the walk with Python floats would help, but `strategy @ action_values` over
-  33 Glosten–Milgrom quotes would then sum in a different order and the curves would stop
-  matching to the last bit. A real trade-off, worth making deliberately or not at all.
-- **Deep CFR is wired up only for the two poker games.** Glosten–Milgrom needs a `features()`
-  encoding of its 33-quote action space to join them.
-- **Multi-round Glosten–Milgrom** is where the informed trader becomes genuinely strategic,
-  since trading reveals information that moves later quotes. The single-round game has a
-  dominant-strategy trader, which is why it is an optimization the brute-force benchmark can
-  check rather than a game. Tree size is `9*99^R + 18*66^R` terminals, so it gets expensive
-  fast.
-- **NFSP** (Neural Fictitious Self-Play) was always the unscheduled stretch, and now has an
-  MLP and a scoring harness waiting for it.
+### 1. Settle the CFR+ question with an independent Leduc benchmark
+
+**The gap that makes this urgent was found while writing this list, and it is a hole in this
+project's own stated method.** `ARCHITECTURE.md` says: *a benchmark must share no code with
+the solver it checks.* That rule is enforced for the microstructure work — Glosten–Milgrom
+against an exhaustive grid search, Kyle against five closed forms — and quietly **not** for
+the poker solvers.
+
+Count what actually checks them. Kuhn has one external number, the published −1/18.
+Leduc has **none at all**: its 26 tests in `tests/test_leduc.py` check structure (288 info
+sets, zero-sum payouts, keys that hide the opponent's card and the suit) and that
+exploitability *falls*, but nothing compares the solved strategy or the game value to
+anything outside this repository. The solver is graded by a metric this repository also
+wrote.
+
+That is exactly where the unexplained result lives: **CFR+ wins all 13 Kuhn checkpoints and
+loses on Leduc and Glosten–Milgrom**, crossing over between 47 and 103 iterations on one and
+between 23 and 51 on the other, with alternating updates worse still and a slow start ruled
+out to 5,000 iterations (Phase 5, Phase 9).
+
+The decisive experiment, and it is cheap: generate reference exploitability curves for
+vanilla and CFR+ on Leduc from an independent implementation — OpenSpiel is the standard one
+— commit them as a test fixture, and compare. The dependency is dev-only and needed once;
+what gets committed is the curve. Three outcomes, all worth having:
+
+- **Vanilla matches, CFR+ does not** → the bug is localized to `CFRPlusRegretMatching`, and
+  several published results here change.
+- **Both match** → the finding is real, and defensible rather than merely suspicious.
+- **Neither matches** → something deeper, and much better to know.
+
+Do this one first. It is the only open item that could invalidate something already
+published, and it closes the methodological gap above either way.
+
+### 2. Multi-round Glosten–Milgrom
+
+The biggest upgrade to what the project is *about*. The single-round game has a
+dominant-strategy trader — Phase 4 recorded that it is "an optimization rather than a game",
+and kept it because it is what the brute-force benchmark can validate. Multi-round is where
+the informed trader becomes genuinely strategic, because trading reveals information that
+moves later quotes, and where CFR earns its place on the problem.
+
+Tree size is `9*99^R + 18*66^R` terminals, which is 2,079 at R=1, **166,617 at R=2** — 80x
+the single-round game — and 13.9M at R=3. So R=2 is reachable and R=3 is not, and even R=2
+is hours rather than minutes on the exact traversal, which is the first place in this
+project where sampling would actually be the right tool rather than the losing one.
+
+It also needs a new benchmark, since the grid search only validates the single-round case —
+the same rule as item 1, applied before the fact rather than after.
+
+### 3. Abstraction, if the goal is scale
+
+Bucketing similar info sets is the standard way CFR reaches large games, and it is the next
+real structural idea rather than another variant. The nice part here: exploitability already
+measures what an abstraction *costs*, which is the interesting quantity and the thing most
+implementations cannot report.
+
+### Deliberately not doing
+
+Recorded so the reasoning survives:
+
+- **NFSP**, the long-standing stretch goal. It is another algorithm measured on games already
+  solved exactly, and Phase 9 already made the "neural approximation loses where a table
+  fits" point with Deep CFR. Breadth, not depth.
+- **The numpy-to-Python-float optimization** in the walk (Phase 6's "where the time goes
+  now"). Perhaps 1.5x, paid for by losing bit-identical curves — and that property is
+  currently the strongest verification asset here, with an image diff and `compare()`
+  agreeing on the same claim from different directions. A bad trade at that price.
+- **Deep CFR on Glosten–Milgrom.** It needs a `features()` encoding of the 33-quote action
+  space, and Deep CFR already lost on both games where there was ground truth to lose
+  against. The encoding is the interesting part, and it is not interesting enough.
+
+### Cheap, if a small win is wanted
+
+- Deploy the dashboard somewhere it is a link rather than a local command. Highest visibility
+  per hour of anything on this list.
+- This build log is now the best writing in the repository and it is buried at the end of a
+  build log. The negative results — DCFR at its published defaults, CFR+ off Kuhn, Deep CFR
+  read on the right axis, three phases of getting the axis wrong — would make a better
+  standalone piece than they do here.
 
 ## Conventions
 

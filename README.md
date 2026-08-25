@@ -490,6 +490,11 @@ vary between runs — but the game value is always −1/18 at equilibrium.
 | 9 | Deep CFR — neural regret approximation, scored against tabular ground truth | done |
 | 10 | Architecture writeup and docs | done |
 
+All ten are done. What would come next, why it is ranked that way, and what was deliberately
+declined, is in [`docs/BUILDLOG.md`](docs/BUILDLOG.md) under *What is left* — led by an
+independent Leduc benchmark, which would settle the one result here that is still
+unexplained.
+
 Phase 4 was the point of the project, and its results are above. The design was worked out
 and checked numerically *before* any game code was written, which was worth it — two of the
 three obvious formulations turn out to be degenerate. `docs/phase4-microstructure-design.md`
