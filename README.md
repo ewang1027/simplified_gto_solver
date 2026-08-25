@@ -381,7 +381,7 @@ pip install -e '.[dev]'
 
 gto --help        # the CLI, installed with the package
 gto solve         # train on Kuhn poker, report exploitability + strategies
-pytest            # correctness suite (523 tests, ~52s)
+pytest            # correctness suite (534 tests, ~56s)
 ruff check .
 ```
 
@@ -422,9 +422,14 @@ move, per-iteration convergence curves may not.
 
 | Document | What it covers |
 |---|---|
+| [`docs/RESULTS.md`](docs/RESULTS.md) | Every measured finding, organized by claim — including a table of the ones that turned out wrong |
 | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | Why the code is shaped this way, where its abstractions stop, the three axes a comparison can be on, and how to add a game, an algorithm or a benchmark |
+| [`docs/REFERENCE.md`](docs/REFERENCE.md) | Module-by-module map of what lives where and what it exposes |
 | [`docs/BUILDLOG.md`](docs/BUILDLOG.md) | Phase-by-phase progress log, findings, and the traps worth knowing before touching a phase |
 | [`docs/phase4-microstructure-design.md`](docs/phase4-microstructure-design.md) | The microstructure modeling work, including the formulations that failed and why |
+
+[`docs/README.md`](docs/README.md) indexes them. Start with `RESULTS.md` for what was found,
+`ARCHITECTURE.md` for how it works, `BUILDLOG.md` for why it looks like this.
 
 ## Kuhn poker rules
 

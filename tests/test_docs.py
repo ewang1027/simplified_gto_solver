@@ -25,13 +25,16 @@ PACKAGE = ROOT / "src" / "gto_solver"
 DOCS = {
     "README.md": ROOT / "README.md",
     "ARCHITECTURE.md": ROOT / "docs" / "ARCHITECTURE.md",
+    "RESULTS.md": ROOT / "docs" / "RESULTS.md",
+    "REFERENCE.md": ROOT / "docs" / "REFERENCE.md",
+    "docs/README.md": ROOT / "docs" / "README.md",
     "BUILDLOG.md": ROOT / "docs" / "BUILDLOG.md",
     "phase4-microstructure-design.md": ROOT / "docs" / "phase4-microstructure-design.md",
 }
 # BUILDLOG is a chronological record: its earlier phases legitimately name entry points
 # that later phases removed, and it says so in "Resuming in one minute". The forward-
 # looking documents get the strict treatment.
-CURRENT_DOCS = ("README.md", "ARCHITECTURE.md")
+CURRENT_DOCS = ("README.md", "ARCHITECTURE.md", "RESULTS.md", "REFERENCE.md", "docs/README.md")
 HISTORICAL_DOCS = ("BUILDLOG.md", "phase4-microstructure-design.md")
 
 # References a historical document makes on purpose, to things that no longer exist or
@@ -116,6 +119,21 @@ def test_the_current_documents_do_not_point_at_removed_entry_points(name):
     text = DOCS[name].read_text()
     for removed in ("python main.py", "scripts/benchmark.py"):
         assert removed not in text, f"{name} still tells you to run {removed}"
+
+
+def test_every_document_is_linked_from_the_index():
+    """A document nobody can find is a document nobody reads, and the index is the
+    only page that promises to list them all.
+    """
+    index = DOCS["docs/README.md"].read_text()
+    for name in ("RESULTS.md", "ARCHITECTURE.md", "REFERENCE.md", "BUILDLOG.md"):
+        assert name in index, f"docs/README.md does not link {name}"
+
+
+def test_the_readme_documentation_table_lists_every_document():
+    readme = DOCS["README.md"].read_text()
+    for name in ("RESULTS.md", "ARCHITECTURE.md", "REFERENCE.md", "BUILDLOG.md"):
+        assert f"docs/{name}" in readme, f"README does not link docs/{name}"
 
 
 def test_every_results_file_a_document_names_exists():

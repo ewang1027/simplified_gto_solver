@@ -11,7 +11,7 @@ cd ~/simplified_gto_solver
 python -m venv .venv && source .venv/bin/activate
 pip install -e '.[dev]'
 
-pytest          # 523 tests, ~52s
+pytest          # 534 tests, ~56s
 ruff check .
 gto solve       # Kuhn demo: exploitability + solved strategies
 gto --help      # solve / algorithms / games / benchmark / microstructure
