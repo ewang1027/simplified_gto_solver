@@ -13,12 +13,9 @@ strategy can be scored exactly.
   linear CFR, alternating-update CFR+, and external-sampling MCCFR. Deep CFR is separate,
   with a small numpy MLP whose gradients are checked against finite differences.
 - Exploitability as the measure of distance from equilibrium, with the best response
-  taken per information set rather than per tree node
-  (`src/gto_solver/metrics/exploitability.py`).
+  taken per information set rather than per tree node (`metrics/exploitability.py`).
 - Kyle (1985), solved as a best-response fixed point instead of with CFR, since its
   competitive market maker is not a player in a zero-sum game.
-- A `gto` CLI, a benchmark runner that saves seeds and provenance to `results/*.json`,
-  and an optional Streamlit dashboard.
 
 ## What has been checked
 
@@ -32,25 +29,23 @@ strategy can be scored exactly.
 ## The market-making game
 
 The maker posts a symmetric half-spread from a 33-level grid. With probability μ the
-trader is informed (it knows the asset value, one of 9 levels, and buys, sells or
-passes); otherwise it trades with a probability that falls as the spread widens. Payoffs
-are zero-sum between maker and trader.
+trader is informed (knows the asset value, one of 9 levels, and buys, sells or passes);
+otherwise it trades with a probability that falls as the spread widens. Zero-sum payoffs.
 
 This is closer to an optimization than a rich game. All results use a single round,
 where the maker has one information set and the informed trader's best response is
 dominant, so solving it means finding the profit-maximizing spread on the grid. The
-solver finds it at every tested μ, matching an exhaustive grid search that doesn't use
-the solver (`gto microstructure`, `tests/test_microstructure_gate.py`):
+solver finds it at every tested μ, matching a separate exhaustive search over the grid
+(`gto microstructure`, `tests/test_microstructure_gate.py`):
 
-| μ | solved spread | grid search | competitive (zero-profit) spread |
+| μ | solved spread | exhaustive search | competitive (zero-profit) spread |
 |---:|---:|---:|---:|
 | 0.02 | 1.625 | 1.625 | 0.031 |
 | 0.30 | 1.875 | 1.875 | 0.494 |
 | 0.70 | 2.500 | 2.500 | 1.314 |
 
-The solved maker is a profit-maximizing monopolist rather than Glosten and Milgrom's
-competitive maker, which is why its spread is much wider. Multi-round versions
-(`--rounds`) exist but haven't been studied.
+The solved maker is a profit-maximizing monopolist, not Glosten and Milgrom's competitive
+maker, hence the wider spread. Multi-round versions (`--rounds`) exist but are unstudied.
 
 ## Known issue
 
@@ -66,17 +61,14 @@ is computed independently, so the numbers above do describe the strategies produ
 ```bash
 python -m venv .venv && source .venv/bin/activate
 pip install -e '.[dev]'
-
 gto solve                                  # Kuhn poker: exploitability and strategies
 gto solve --game leduc --iterations 5000
 gto microstructure                         # the spread table above
-gto algorithms                             # list the variants
 pytest                                     # correctness suite (531 tests, about a minute)
 ```
 
-More detail: [`docs/RESULTS.md`](docs/RESULTS.md) (measurements),
-[`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) (design) and
-[`docs/REFERENCE.md`](docs/REFERENCE.md) (module map).
+There is also a benchmark runner (`gto benchmark`), an optional Streamlit dashboard, and
+docs on [results](docs/RESULTS.md), [architecture](docs/ARCHITECTURE.md) and [modules](docs/REFERENCE.md).
 
 ## References
 
