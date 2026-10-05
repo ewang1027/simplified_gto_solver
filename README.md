@@ -22,7 +22,7 @@ The results worth remembering are mostly negative, and they took the most work t
 checkpoint and loses on both other games**, unexplained; **Deep CFR loses to both tabular CFR
 and MCCFR** once the axis is read correctly; and **exact traversal beats sampling** at every
 Leduc budget, on every one of ten seeds. None were tuned away. See
-[`docs/BUILDLOG.md`](docs/BUILDLOG.md) for how each was established and what is still open.
+[`docs/RESULTS.md`](docs/RESULTS.md) for how each was established.
 
 ## Market microstructure
 
@@ -425,11 +425,9 @@ move, per-iteration convergence curves may not.
 | [`docs/RESULTS.md`](docs/RESULTS.md) | Every measured finding, organized by claim — including a table of the ones that turned out wrong |
 | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | Why the code is shaped this way, where its abstractions stop, the three axes a comparison can be on, and how to add a game, an algorithm or a benchmark |
 | [`docs/REFERENCE.md`](docs/REFERENCE.md) | Module-by-module map of what lives where and what it exposes |
-| [`docs/BUILDLOG.md`](docs/BUILDLOG.md) | Phase-by-phase progress log, findings, and the traps worth knowing before touching a phase |
-| [`docs/phase4-microstructure-design.md`](docs/phase4-microstructure-design.md) | The microstructure modeling work, including the formulations that failed and why |
 
-[`docs/README.md`](docs/README.md) indexes them. Start with `RESULTS.md` for what was found,
-`ARCHITECTURE.md` for how it works, `BUILDLOG.md` for why it looks like this.
+[`docs/README.md`](docs/README.md) indexes them. Start with `RESULTS.md` for what was found and
+`ARCHITECTURE.md` for how it works.
 
 ## Kuhn poker rules
 
@@ -495,15 +493,11 @@ vary between runs — but the game value is always −1/18 at equilibrium.
 | 9 | Deep CFR — neural regret approximation, scored against tabular ground truth | done |
 | 10 | Architecture writeup and docs | done |
 
-All ten are done. What would come next, why it is ranked that way, and what was deliberately
-declined, is in [`docs/BUILDLOG.md`](docs/BUILDLOG.md) under *What is left* — led by an
-independent Leduc benchmark, which would settle the one result here that is still
-unexplained.
+All ten are done.
 
 Phase 4 was the point of the project, and its results are above. The design was worked out
 and checked numerically *before* any game code was written, which was worth it — two of the
-three obvious formulations turn out to be degenerate. `docs/phase4-microstructure-design.md`
-records what failed and why, including a parameter sweep that produced a beautiful-looking
+three obvious formulations turn out to be degenerate. That work included a parameter sweep that produced a beautiful-looking
 result (spread growing 20× with μ) which was entirely spurious: the market maker had stopped
 trading, a zero-profit corner sitting *inside* the search grid rather than on its edge.
 

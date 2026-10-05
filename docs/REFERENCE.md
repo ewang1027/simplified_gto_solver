@@ -119,7 +119,7 @@ appears in them with no change. The dashboard goes further: a live solve produce
 
 | Script | Does |
 |---|---|
-| `scripts/verify_phase4.py` | Regenerates every number in `docs/phase4-microstructure-design.md` |
+| `scripts/verify_phase4.py` | Re-checks the Kyle and Glosten-Milgrom modeling numbers |
 | `scripts/profile_hotloop.py` | Where training time goes, with a per-node cost |
 | `scripts/audit_doc_numbers.py` | Re-measures the machine-specific numbers the documents state |
 

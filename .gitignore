@@ -7,3 +7,7 @@ venv/
 .venv/
 .ruff_cache/
 *.egg-info/
+
+# Personal working notes, kept locally
+docs/BUILDLOG.md
+docs/phase4-microstructure-design.md

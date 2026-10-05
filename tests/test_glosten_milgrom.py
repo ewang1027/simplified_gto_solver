@@ -3,8 +3,7 @@
 The most important test here is benchmark consistency: the expected maker payoff
 computed by walking this game tree must equal maker_profit() from
 analysis/microstructure.py exactly (up to floating-point noise). That equality is
-what makes CFR's exploitability metric meaningful on this game -- see
-docs/phase4-microstructure-design.md.
+what makes CFR's exploitability metric meaningful on this game.
 """
 
 import numpy as np

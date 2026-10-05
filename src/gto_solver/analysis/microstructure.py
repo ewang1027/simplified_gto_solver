@@ -9,8 +9,7 @@ Two different market makers live here, and the difference matters:
       solves for in a zero-sum game. Computed here by exhaustive search over the
       quote grid, so the CFR solution has something independent to reproduce.
 
-These give different answers, and neither is presented as the other. See
-docs/phase4-microstructure-design.md.
+These give different answers, and neither is presented as the other.
 
 Every definition here must match games/glosten_milgrom.py exactly, or comparing
 the solver against these benchmarks is meaningless.

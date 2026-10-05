@@ -1,8 +1,6 @@
-"""Regenerate every number in docs/phase4-microstructure-design.md.
-
-The design doc's tables were originally produced by throwaway scripts that were
-never committed, which made them impossible to spot-check later. This script
-replaces them: run it and compare against the doc.
+"""Regenerate the numbers behind the Kyle and Glosten-Milgrom modeling choices:
+Kyle closed forms vs the fixed-point solver, the strategic-maker degeneracy, the
+GM parameter checks, and the multi-round tree sizes.
 
     python scripts/verify_phase4.py
 """

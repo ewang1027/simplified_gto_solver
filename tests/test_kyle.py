@@ -4,7 +4,7 @@ Kyle's market maker is competitive, not strategic, so there is no CFR game and
 no exploitability metric here -- these tests check the fixed-point solver
 against the closed form, plus an independent simulation-based regression
 check, and document why a strategic maker has no interior optimum. See
-kyle.py's module docstring and docs/phase4-microstructure-design.md.
+kyle.py's module docstring.
 """
 
 import pytest

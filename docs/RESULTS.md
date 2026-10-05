@@ -1,7 +1,7 @@
 # Results
 
 Everything this project measured, organized by what it claims rather than by when it was
-found. `docs/BUILDLOG.md` has the chronology and the traps; this has the findings.
+found.
 
 Every number here comes from a file in `results/`, each measured from a clean tree and
 carrying the commit, machine and seeds behind it. `tests/test_docs.py` checks that the

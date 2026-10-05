@@ -3,12 +3,11 @@
 Kyle's market maker is COMPETITIVE: it prices at the Bayesian conditional
 expectation E[v | y] and earns zero expected profit by construction -- it
 does not optimize anything. That makes this a different object from a
-two-player zero-sum game, so CFR and exploitability do not apply here (see
-docs/phase4-microstructure-design.md). A strategic maker's PnL turns out to
-rise monotonically in lambda with no interior optimum -- tested in
-tests/test_kyle.py -- which is the concrete evidence for that call. Instead,
-the equilibrium is found by iterating the trader's and maker's best-response
-maps to their mutual fixed point.
+two-player zero-sum game, so CFR and exploitability do not apply here. A
+strategic maker's PnL turns out to rise monotonically in lambda with no
+interior optimum -- tested in tests/test_kyle.py -- which is the concrete
+evidence for that call. Instead, the equilibrium is found by iterating the
+trader's and maker's best-response maps to their mutual fixed point.
 """
 
 from dataclasses import dataclass

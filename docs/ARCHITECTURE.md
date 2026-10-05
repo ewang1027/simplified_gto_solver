@@ -1,8 +1,7 @@
 # Architecture
 
-Why the code is shaped the way it is, and how to extend it. For chronology, measured
-results and the traps behind each phase, see `docs/BUILDLOG.md`; for the microstructure
-modeling work see `docs/phase4-microstructure-design.md`.
+Why the code is shaped the way it is, and how to extend it. For measured results, see
+`docs/RESULTS.md`.
 
 Two ideas carry the whole project, one metric decides whether any of it is right, and one
 distinction — which axis a comparison is on — turns out to be where every mistake was
@@ -284,9 +283,9 @@ src/gto_solver/
 ├── cli.py          the `gto` command line
 └── dashboard.py    the Streamlit app (optional `dashboard` extra)
 tests/              one file per module, plus the cross-cutting ones below
-docs/               BUILDLOG.md, ARCHITECTURE.md, phase4-microstructure-design.md
+docs/               ARCHITECTURE.md, RESULTS.md, REFERENCE.md
 results/            benchmark results as JSON, with provenance
-scripts/            verify_phase4.py (regenerates the design doc's numbers),
+scripts/            verify_phase4.py (re-checks the Kyle and GM modeling numbers),
                     profile_hotloop.py (where the training time goes)
 ```
 

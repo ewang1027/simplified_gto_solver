@@ -3,10 +3,10 @@ half-spread `s` (ask = +s, bid = -s, mid = 0), then a trader responds.
 
 Mirrors analysis/microstructure.py exactly -- GMParams, values(), quotes(), and
 uninformed_trade_prob() are the single source of truth and are imported here, not
-reimplemented. See docs/phase4-microstructure-design.md for why the model is shaped
-this way: a binary V is degenerate (no margin for the maker to trade off adverse
-selection against spread), and a single round has a dominant-strategy trader, which
-only becomes genuinely strategic (profit now vs. revealing V) over multiple rounds.
+reimplemented. The model is shaped this way because a binary V is degenerate (no
+margin for the maker to trade off adverse selection against spread), and a single
+round has a dominant-strategy trader, which only becomes genuinely strategic (profit
+now vs. revealing V) over multiple rounds.
 
 Root chance draws V and the trader type jointly: informed with probability mu, else
 uninformed with a direction (buy/sell, equally likely) fixed for the whole episode.

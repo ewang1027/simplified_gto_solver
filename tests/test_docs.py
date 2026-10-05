@@ -28,27 +28,8 @@ DOCS = {
     "RESULTS.md": ROOT / "docs" / "RESULTS.md",
     "REFERENCE.md": ROOT / "docs" / "REFERENCE.md",
     "docs/README.md": ROOT / "docs" / "README.md",
-    "BUILDLOG.md": ROOT / "docs" / "BUILDLOG.md",
-    "phase4-microstructure-design.md": ROOT / "docs" / "phase4-microstructure-design.md",
 }
-# BUILDLOG is a chronological record: its earlier phases legitimately name entry points
-# that later phases removed, and it says so in "Resuming in one minute". The forward-
-# looking documents get the strict treatment.
 CURRENT_DOCS = ("README.md", "ARCHITECTURE.md", "RESULTS.md", "REFERENCE.md", "docs/README.md")
-HISTORICAL_DOCS = ("BUILDLOG.md", "phase4-microstructure-design.md")
-
-# References a historical document makes on purpose, to things that no longer exist or
-# never lived in the repository. Each is allowed by name rather than by exempting the
-# whole document, so a *new* stale reference in one of them still fails.
-HISTORICAL_REFERENCES = {
-    # Replaced by `gto benchmark` in Phase 7. The BUILDLOG records what earlier phases
-    # actually ran, and says so where it lists the commands.
-    "scripts/benchmark.py",
-    # Session scratchpad directories that held Phase 4's throwaway verification scripts.
-    # They were never committed; scripts/verify_phase4.py is what replaced them.
-    "design_gm/",
-    "design_kyle/",
-}
 
 # A path reference is anything backticked containing a slash and ending in a file
 # extension or a slash. Globs are skipped: they name a set, not a file.
@@ -86,19 +67,6 @@ def test_every_path_a_current_document_names_exists(name):
     assert not missing, f"{name} names paths that do not exist: {missing}"
 
 
-@pytest.mark.parametrize("name", HISTORICAL_DOCS)
-def test_historical_documents_only_name_missing_paths_on_purpose(name):
-    """A chronological record legitimately names things later phases deleted. It should
-    not be exempt from checking, only from pretending they still exist -- so each is
-    allowed by name, and anything else is a genuine stale reference.
-    """
-    if not DOCS[name].exists():
-        pytest.skip(f"{name} is not present")
-    missing = {ref for ref in referenced_paths(DOCS[name].read_text()) if not resolves(ref)}
-    unexpected = sorted(missing - HISTORICAL_REFERENCES)
-    assert not unexpected, f"{name} names paths that do not exist: {unexpected}"
-
-
 @pytest.mark.parametrize("name", CURRENT_DOCS)
 def test_every_gto_command_a_document_tells_you_to_run_exists(name):
     from gto_solver.cli import app
@@ -113,9 +81,7 @@ def test_every_gto_command_a_document_tells_you_to_run_exists(name):
 
 @pytest.mark.parametrize("name", CURRENT_DOCS)
 def test_the_current_documents_do_not_point_at_removed_entry_points(name):
-    """`main.py` and `scripts/benchmark.py` were replaced by `gto` in Phase 7. The
-    BUILDLOG still names them, correctly, as a record of what was run at the time.
-    """
+    """`main.py` and `scripts/benchmark.py` were replaced by `gto` in Phase 7."""
     text = DOCS[name].read_text()
     for removed in ("python main.py", "scripts/benchmark.py"):
         assert removed not in text, f"{name} still tells you to run {removed}"
@@ -126,13 +92,13 @@ def test_every_document_is_linked_from_the_index():
     only page that promises to list them all.
     """
     index = DOCS["docs/README.md"].read_text()
-    for name in ("RESULTS.md", "ARCHITECTURE.md", "REFERENCE.md", "BUILDLOG.md"):
+    for name in ("RESULTS.md", "ARCHITECTURE.md", "REFERENCE.md"):
         assert name in index, f"docs/README.md does not link {name}"
 
 
 def test_the_readme_documentation_table_lists_every_document():
     readme = DOCS["README.md"].read_text()
-    for name in ("RESULTS.md", "ARCHITECTURE.md", "REFERENCE.md", "BUILDLOG.md"):
+    for name in ("RESULTS.md", "ARCHITECTURE.md", "REFERENCE.md"):
         assert f"docs/{name}" in readme, f"README does not link docs/{name}"
 
 
