@@ -131,5 +131,5 @@ One file per module, plus four that cut across:
 |---|---|
 | `tests/test_microstructure_gate.py` | Solver, game and independent benchmark all agree — the test the microstructure phase exists to pass |
 | `tests/test_published_results.py` | The committed `results/*.json`: enough seeds, a clean tree, not accidentally a `--quick` run |
-| `tests/test_docs.py` | Documents against the repository: paths exist, commands exist, tables regenerate |
+| `tests/test_docs.py` | Documents against the repository: paths exist, commands exist |
 | `tests/test_payout_vector.py` | Every `payouts()` override against `payout` at every terminal node of every game |

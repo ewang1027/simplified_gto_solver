@@ -15,8 +15,7 @@ assumes no prior context.
 ## What is checked automatically
 
 These documents are not only prose. `tests/test_docs.py` verifies that every path they name
-exists, every `gto` command they tell you to run is real, and every benchmark table in the
-README regenerates from the results file it came from. `scripts/audit_doc_numbers.py`
+exists and every `gto` command they tell you to run is real. `scripts/audit_doc_numbers.py`
 re-measures the machine-specific claims.
 
 Both exist because this project's most persistent failure has been documents that were true

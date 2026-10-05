@@ -4,9 +4,8 @@ Everything this project measured, organized by what it claims rather than by whe
 found.
 
 Every number here comes from a file in `results/`, each measured from a clean tree and
-carrying the commit, machine and seeds behind it. `tests/test_docs.py` checks that the
-tables in `README.md` still regenerate from those files, and
-`scripts/audit_doc_numbers.py` re-measures the machine-specific claims.
+carrying the commit, machine and seeds behind it. `scripts/audit_doc_numbers.py`
+re-measures the machine-specific claims.
 
 ## How to read these numbers
 

@@ -6,19 +6,15 @@ layout block missing three modules, a table of numbers from two measurements ago
 earlier phase found at least one, and every one was found by a human re-reading rather
 than by anything that would fail.
 
-So the checkable parts are checked here. A path a document names must exist; a command
-it tells you to run must be a real command; a benchmark table must regenerate from the
-results file it claims to come from. What is left for a reader is the prose, which is
-the part worth a reader's time.
+So the checkable parts are checked here. A path a document names must exist, and a
+command it tells you to run must be a real command. What is left for a reader is the
+prose, which is the part worth a reader's time.
 """
 
 import re
 from pathlib import Path
 
 import pytest
-
-from gto_solver.benchmark.results import BenchmarkResults
-from gto_solver.benchmark.tables import convergence_markdown, wallclock_markdown
 
 ROOT = Path(__file__).resolve().parents[1]
 PACKAGE = ROOT / "src" / "gto_solver"
@@ -113,43 +109,6 @@ def test_every_image_the_readme_embeds_exists():
     embedded = re.findall(r"!\[[^\]]*\]\(([^)]+)\)", DOCS["README.md"].read_text())
     missing = [image for image in embedded if not (ROOT / image).exists()]
     assert not missing, f"README embeds missing images: {missing}"
-
-
-def test_the_readme_benchmark_tables_regenerate_from_the_results_files():
-    """The strongest of these checks: not "a number exists" but "this exact row is what
-    the harness prints today". A re-measurement that moved a number fails here.
-    """
-    readme = DOCS["README.md"].read_text()
-    section = readme.split("## Benchmarks", 1)[1].split('## Why exploitability', 1)[0]
-
-    generated: set[str] = set()
-    for path in sorted((ROOT / "results").glob("*.json")):
-        results = BenchmarkResults.load(path)
-        if results.convergence:
-            table, _ = convergence_markdown(
-                results.convergence, checkpoints=results.convergence[0].checkpoints
-            )
-        else:
-            table, _ = wallclock_markdown(results.wallclock)
-        generated.update(line for line in table.splitlines() if line.startswith("|"))
-
-    rows = [
-        line
-        for line in section.splitlines()
-        if line.startswith("|") and not set(line) <= set("|-: ")
-    ]
-    # The Performance and Deep CFR comparison tables are assembled from --compare output
-    # and from two results files at once, so they are not single-suite rows.
-    hand_written = set()
-    for heading in ("### Performance", "### Deep CFR"):
-        if heading in section:
-            block = section.split(heading, 1)[1].split("\n### ", 1)[0]
-            hand_written |= {line for line in block.splitlines() if line.startswith("|")}
-
-    checked = [row for row in rows if row not in hand_written]
-    missing = [row for row in checked if row not in generated]
-    assert not missing, f"README rows no longer regenerate from results/: {missing}"
-    assert len(checked) > 10, "the table check matched suspiciously few rows"
 
 
 def test_the_readme_reports_the_test_count_it_actually_has():

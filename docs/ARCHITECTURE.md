@@ -311,6 +311,5 @@ Three test files are cross-cutting rather than per-module:
 - `tests/test_published_results.py` checks the committed `results/*.json` the way anything
   published gets checked — enough seeds, a clean tree, and not accidentally a `--quick` run.
 - `tests/test_docs.py` checks these documents against the repository: every path they name
-  exists, every command they tell you to run is real, and every benchmark table regenerates
-  from the results file it came from. The prose is left to a reader; the checkable parts are
-  checked.
+  exists and every command they tell you to run is real. The prose is left to a reader; the
+  checkable parts are checked.
