@@ -60,6 +60,10 @@ Seven of the eight variants in `solvers/registry.py` are combinations of these, 
 files — including `mccfr_plus`, the CFR+ rule under external sampling, which neither paper
 defines and which cost nothing to add. Any rule composes with any traversal.
 
+A traversal sums each info set's regret over every history that reaches it in one walk and
+calls the rule once at the end, so CFR+'s floor and DCFR's discount are applied once per info
+set per walk, not once per history.
+
 Regret is stored per info set with a **per-info-set action count**. Kuhn has two actions
 everywhere; Leduc has fold/call/raise or call/raise depending on the node; Glosten–Milgrom's
 maker chooses among 33 quotes. A global `num_actions` constant — which the original script
@@ -195,7 +199,7 @@ outputs there as it runs, and counting them meant every suite after the first re
 dirtied by the run in progress.
 
 **Know the noise floor before claiming a speedup.** Ten seeds each training for exactly 20
-seconds on this machine completed between 129,913 and 143,891 iterations — a 3.1% relative
+seconds on this machine completed between 129,371 and 136,949 iterations, a 1.7% relative
 standard deviation. A throughput difference smaller than that is machine drift.
 `scripts/audit_doc_numbers.py` re-measures this and the other machine-specific numbers in
 these documents, because two of them had already gone stale by Phase 10.
@@ -252,9 +256,8 @@ silently publishing a stochastic variant as a single run.
 If the variant genuinely does not fit rule × traversal, use `make_solver` and expect to
 justify it — that escape hatch has exactly one user, and a test says so.
 
-Validate with exploitability trending to zero, and report what you measure. Several variants
-here (DCFR, alternating updates, Deep CFR) do *not* beat the baseline, and that is recorded
-rather than tuned away.
+Validate with exploitability trending to zero, and report what you measure. Linear CFR on Kuhn
+and Deep CFR finish behind the baseline here, and that is recorded rather than tuned away.
 
 ### Add a benchmark
 

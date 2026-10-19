@@ -19,9 +19,12 @@ strategy can be scored exactly.
 
 ## What has been checked
 
-- Kuhn: vanilla CFR reaches exploitability 0.00063 after 100,000 iterations, and the
+- Kuhn: vanilla CFR reaches exploitability 0.00068 after 100,000 iterations, and the
   average strategy's value is within 0.01 of the known −1/18 after 3,000
-  (`tests/test_cfr_convergence.py`). On Leduc it reaches 0.0068 after 5,000.
+  (`tests/test_cfr_convergence.py`). On Leduc it reaches 0.015 after 5,000.
+- CFR+ beats vanilla CFR at every checkpoint on all three games. On Leduc after 5,000
+  iterations it is at 0.0021, and alternating-update CFR+ at 0.00005
+  ([results](docs/RESULTS.md)).
 - Kyle: the fixed point matches the closed forms (λβ = 1/2, half the private information
   revealed), and λ is recovered separately by regression on simulated order flow
   (`tests/test_kyle.py`).

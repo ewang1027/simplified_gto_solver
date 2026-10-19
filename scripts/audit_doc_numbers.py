@@ -78,16 +78,16 @@ def main() -> int:
     counts = [curve[last] for curve in wallclock["mccfr"].iterations_by_seed]
     row(
         "wall-clock noise floor (relative sd)",
-        "3.1%",
+        "1.7%",
         f"{np.std(counts) / np.mean(counts):.1%}",
     )
     row(
         "iterations in 20s across seeds",
-        "129,913-143,891",
+        "129,371-136,949",
         f"{min(counts):,}-{max(counts):,}",
     )
     ratio = wallclock["mccfr"].iterations_per_second() / wallclock["vanilla"].iterations_per_second()
-    row("sampled/exact throughput ratio", "83x", f"{ratio:.0f}x")
+    row("sampled/exact throughput ratio", "77x", f"{ratio:.0f}x")
 
     print(
         "\nDocumented values above are what docs/ARCHITECTURE.md states. Where a column\n"
