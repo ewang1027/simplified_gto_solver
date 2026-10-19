@@ -100,9 +100,7 @@ SUITES: dict[str, Suite] = {
             subtitle=(
                 "Exploitability vs training seconds. Iterations are not a common currency "
                 "between the two: one sampled iteration is a single path, one exact "
-                "iteration is the whole 288-info-set tree. Both CFR+ update schedules are "
-                "here because CFR+ wins on Kuhn and loses here, and the schedule is the "
-                "first explanation to rule out."
+                "iteration is the whole 288-info-set tree."
             ),
             kind="wallclock",
             make_game=LeducGame,
@@ -139,9 +137,9 @@ SUITES: dict[str, Suite] = {
             name="leduc_convergence",
             title="Update rules on Leduc Hold'em, by iteration",
             subtitle=(
-                "The wall-clock suite fits only ~600 exact iterations into 20 seconds, and a "
-                "rule that merely starts slowly would look like a rule that loses. This is the "
-                "same comparison on the axis the literature uses, run out to 5,000 iterations."
+                "The wall-clock suite stops at 20 seconds, where a rule that merely starts "
+                "slowly would look like a rule that loses. This is the same comparison on the "
+                "axis the literature uses, run out to 5,000 iterations."
             ),
             kind="convergence",
             make_game=LeducGame,

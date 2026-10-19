@@ -303,9 +303,9 @@ def microstructure(
         )
 
     typer.echo(
-        "\nSpreads are full spreads (twice the half-spread). The strategic maker quotes "
-        "wider\nthan the competitive one at every mu, and the spread widens with informed "
-        "flow --\nadverse selection, recovered from self-play rather than assumed."
+        "\nSpreads are full spreads (twice the half-spread). With one round the maker has "
+        "a single\ninfo set, so solving the game amounts to finding the profit-maximizing "
+        "spread on the grid.\nThat maker quotes wider than the competitive one at every mu."
     )
     if not agreed:
         typer.secho(

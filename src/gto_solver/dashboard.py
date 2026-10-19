@@ -257,8 +257,9 @@ def _microstructure_tab() -> None:
         y_label="full spread",
     )
     st.markdown(
-        "The spread widens with informed flow — adverse selection, recovered from self-play "
-        "rather than assumed. The two makers answer different questions and neither is "
+        "With one round the maker has a single info set, so solving the game amounts to "
+        "finding the profit-maximizing spread on the grid. The two makers answer different "
+        "questions and neither is "
         "presented as the other: Glosten–Milgrom's competitive maker earns zero expected "
         "profit by construction, so it always quotes tighter than one that maximizes."
     )
