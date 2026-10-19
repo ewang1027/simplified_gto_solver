@@ -6,7 +6,7 @@ scale to games too large to walk exactly.
 import numpy as np
 
 from gto_solver.games.base import Game, GameState
-from gto_solver.solvers.base import InfoSetStore, RegretUpdateRule, Traversal
+from gto_solver.solvers.base import InfoSetRecord, InfoSetStore, RegretUpdateRule, Traversal
 
 
 class _TreeNode:
@@ -59,6 +59,49 @@ def build_tree(state: GameState, num_players: int) -> _TreeNode:
         num_actions=len(actions),
         children=[build_tree(state.apply(action), num_players) for action in actions],
     )
+
+
+class _PendingUpdates:
+    """One walk's regret and strategy contributions, summed per info set and applied
+    once at the end.
+
+    An info set is usually reached through several histories in one walk: every Kuhn
+    info set through both of the opponent's possible cards. CFR holds the strategy
+    profile fixed for the walk, sums the instantaneous regret over all of those
+    histories, and then updates each info set once. Updating at every history instead
+    changes the strategy partway through the walk, and applies CFR+'s floor and DCFR's
+    discount once per history rather than once per iteration.
+    """
+
+    __slots__ = ("regret", "strategy")
+
+    def __init__(self):
+        self.regret: dict[str, list] = {}  # key -> [record, summed regret]
+        self.strategy: dict[str, list] = {}  # key -> [record, strategy, summed own reach]
+
+    def add_regret(self, key: str, record: InfoSetRecord, regrets: np.ndarray) -> None:
+        entry = self.regret.get(key)
+        if entry is None:
+            self.regret[key] = [record, regrets]
+        else:
+            entry[1] = entry[1] + regrets
+
+    def add_strategy(
+        self, key: str, record: InfoSetRecord, strategy: np.ndarray, reach: float
+    ) -> None:
+        # The strategy is the same at every visit, since nothing changes the record
+        # until apply(), so only the reach needs summing.
+        entry = self.strategy.get(key)
+        if entry is None:
+            self.strategy[key] = [record, strategy, reach]
+        else:
+            entry[2] += reach
+
+    def apply(self, rule: RegretUpdateRule, iteration: int) -> None:
+        for record, regrets in self.regret.values():
+            rule.accumulate_regret(record, regrets, iteration)
+        for record, strategy, reach in self.strategy.values():
+            rule.accumulate_strategy(record, strategy, reach, iteration)
 
 
 class FullTraversal(Traversal):
@@ -116,13 +159,17 @@ class FullTraversal(Traversal):
         # copying an array. Nothing here needs vectorized arithmetic.
         reach = [1.0] * (num_players + 1)
         update_player = (iteration - 1) % num_players if self.alternating else None
+        updates = _PendingUpdates()
         if not self.cache_tree:
-            return _walk(
-                game.new_initial_state(), reach, num_players, store, rule, iteration, update_player
+            value = _walk(
+                game.new_initial_state(), reach, num_players, store, rule, updates, update_player
             )
-        return _walk_resolved(
-            self._resolved_tree(game), reach, num_players, store, rule, iteration, update_player
-        )
+        else:
+            value = _walk_resolved(
+                self._resolved_tree(game), reach, num_players, store, rule, updates, update_player
+            )
+        updates.apply(rule, iteration)
+        return value
 
 
 def _walk_resolved(
@@ -131,7 +178,7 @@ def _walk_resolved(
     num_players: int,
     store: InfoSetStore,
     rule: RegretUpdateRule,
-    iteration: int,
+    updates: _PendingUpdates,
     update_player: int | None = None,
 ) -> np.ndarray:
     """`_walk` over a pre-resolved tree. Same arithmetic, same order, same results —
@@ -148,7 +195,7 @@ def _walk_resolved(
             child_reach = reach.copy()
             child_reach[-1] *= prob
             value += prob * _walk_resolved(
-                child, child_reach, num_players, store, rule, iteration, update_player
+                child, child_reach, num_players, store, rule, updates, update_player
             )
         return value
 
@@ -161,7 +208,7 @@ def _walk_resolved(
         child_reach = reach.copy()
         child_reach[player] *= strategy[i]
         action_values[i] = _walk_resolved(
-            child, child_reach, num_players, store, rule, iteration, update_player
+            child, child_reach, num_players, store, rule, updates, update_player
         )
 
     node_value = strategy @ action_values
@@ -169,8 +216,8 @@ def _walk_resolved(
     if update_player is None or player == update_player:
         cf_reach = _counterfactual_reach(reach, player)
         regrets = cf_reach * (action_values[:, player] - node_value[player])
-        rule.accumulate_regret(record, regrets, iteration)
-        rule.accumulate_strategy(record, strategy, reach[player], iteration)
+        updates.add_regret(node.info_key, record, regrets)
+        updates.add_strategy(node.info_key, record, strategy, reach[player])
 
     return node_value
 
@@ -199,11 +246,11 @@ def _walk(
     num_players: int,
     store: InfoSetStore,
     rule: RegretUpdateRule,
-    iteration: int,
+    updates: _PendingUpdates,
     update_player: int | None = None,
 ) -> np.ndarray:
-    """Recursively evaluate `state`, updating regret/strategy accumulators along the
-    way. Returns the per-player expected payoff vector for `state`.
+    """Recursively evaluate `state`, collecting regret and strategy contributions into
+    `updates`. Returns the per-player expected payoff vector for `state`.
 
     `reach` has length num_players + 1: reach[i] is player i's contribution to
     reaching `state`, and reach[-1] is chance's contribution. It is a plain list;
@@ -224,13 +271,14 @@ def _walk(
             child_reach[-1] *= prob
             child_state = state.apply(outcome)
             value += prob * _walk(
-                child_state, child_reach, num_players, store, rule, iteration, update_player
+                child_state, child_reach, num_players, store, rule, updates, update_player
             )
         return value
 
     player = state.current_player()
     actions = state.legal_actions()
-    record = store.get(state.info_set_key(), len(actions))
+    key = state.info_set_key()
+    record = store.get(key, len(actions))
     strategy = rule.strategy(record)
 
     action_values = np.empty((len(actions), num_players), dtype=np.float64)
@@ -239,7 +287,7 @@ def _walk(
         child_reach[player] *= strategy[i]
         child_state = state.apply(action)
         action_values[i] = _walk(
-            child_state, child_reach, num_players, store, rule, iteration, update_player
+            child_state, child_reach, num_players, store, rule, updates, update_player
         )
 
     node_value = strategy @ action_values
@@ -247,8 +295,8 @@ def _walk(
     if update_player is None or player == update_player:
         cf_reach = _counterfactual_reach(reach, player)
         regrets = cf_reach * (action_values[:, player] - node_value[player])
-        rule.accumulate_regret(record, regrets, iteration)
-        rule.accumulate_strategy(record, strategy, reach[player], iteration)
+        updates.add_regret(key, record, regrets)
+        updates.add_strategy(key, record, strategy, reach[player])
 
     return node_value
 
@@ -262,6 +310,12 @@ class ExternalSamplingMCCFR(Traversal):
     the current strategy/chance distribution. That's what keeps one traversal
     cheaper than walking the whole tree, at the cost of a noisier per-iteration
     update.
+
+    Updates are collected per traversal and applied when it finishes, so the second
+    traversal of an iteration sees the first one's regrets. In a perfect-recall game a
+    traversal reaches each info set at most once, so this only matters for games
+    without it, like multi-round Glosten-Milgrom, where the maker does not remember
+    its own past quotes.
     """
 
     def run_iteration(
@@ -275,9 +329,11 @@ class ExternalSamplingMCCFR(Traversal):
         num_players = game.num_players
         payoffs = np.zeros(num_players, dtype=np.float64)
         for traverser in range(num_players):
+            updates = _PendingUpdates()
             value = _sample_walk(
-                game.new_initial_state(), num_players, store, rule, iteration, rng, traverser
+                game.new_initial_state(), num_players, store, rule, updates, rng, traverser
             )
+            updates.apply(rule, iteration)
             payoffs[traverser] = value[traverser]
         return payoffs
 
@@ -287,7 +343,7 @@ def _sample_walk(
     num_players: int,
     store: InfoSetStore,
     rule: RegretUpdateRule,
-    iteration: int,
+    updates: _PendingUpdates,
     rng: np.random.Generator,
     traverser: int,
 ) -> np.ndarray:
@@ -305,32 +361,33 @@ def _sample_walk(
         outcomes, probs = zip(*state.chance_outcomes())
         outcome = outcomes[rng.choice(len(outcomes), p=probs)]
         return _sample_walk(
-            state.apply(outcome), num_players, store, rule, iteration, rng, traverser
+            state.apply(outcome), num_players, store, rule, updates, rng, traverser
         )
 
     player = state.current_player()
     actions = state.legal_actions()
-    record = store.get(state.info_set_key(), len(actions))
+    key = state.info_set_key()
+    record = store.get(key, len(actions))
     strategy = rule.strategy(record)
 
     if player == traverser:
         action_values = np.empty((len(actions), num_players), dtype=np.float64)
         for i, action in enumerate(actions):
             action_values[i] = _sample_walk(
-                state.apply(action), num_players, store, rule, iteration, rng, traverser
+                state.apply(action), num_players, store, rule, updates, rng, traverser
             )
         node_value = strategy @ action_values
         # No explicit reach weighting: sampling opponents/chance on-policy with
         # ratio 1 already makes this an unbiased estimate of the counterfactual
         # regret, unlike FullTraversal's exact cf_reach multiplier.
         regrets = action_values[:, player] - node_value[player]
-        rule.accumulate_regret(record, regrets, iteration)
+        updates.add_regret(key, record, regrets)
         return node_value
 
     # Opponent node: sample one action on-policy and accumulate its strategy sum
     # here with weight 1 -- again, sampling is what makes this unbiased.
     action_idx = rng.choice(len(actions), p=strategy)
-    rule.accumulate_strategy(record, strategy, 1.0, iteration)
+    updates.add_strategy(key, record, strategy, 1.0)
     return _sample_walk(
-        state.apply(actions[action_idx]), num_players, store, rule, iteration, rng, traverser
+        state.apply(actions[action_idx]), num_players, store, rule, updates, rng, traverser
     )

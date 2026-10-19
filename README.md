@@ -47,15 +47,6 @@ solver finds it at every tested μ, matching a separate exhaustive search over t
 The solved maker is a profit-maximizing monopolist, not Glosten and Milgrom's competitive
 maker, hence the wider spread. Multi-round versions (`--rounds`) exist but are unstudied.
 
-## Known issue
-
-`FullTraversal` in `src/gto_solver/solvers/traversal.py` updates regrets at every history
-node it visits and re-reads the strategy partway through an iteration, instead of once per
-information set per iteration. For CFR+ and DCFR that applies the regret floor and the
-discount per visit, which is not the published algorithm, so the comparisons between
-update rules in `docs/RESULTS.md` and `results/` shouldn't be relied on. Exploitability
-is computed independently, so the numbers above do describe the strategies produced.
-
 ## Usage
 
 ```bash
@@ -64,7 +55,7 @@ pip install -e '.[dev]'
 gto solve                                  # Kuhn poker: exploitability and strategies
 gto solve --game leduc --iterations 5000
 gto microstructure                         # the spread table above
-pytest                                     # correctness suite (531 tests, about a minute)
+pytest                                     # correctness suite (539 tests, about a minute)
 ```
 
 There is also a benchmark runner (`gto benchmark`), an optional Streamlit dashboard, and
